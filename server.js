@@ -2,13 +2,13 @@ const express = require("express");
 const path = require("path");
 const http = require("http");
 const { randomUUID } = require("crypto");
-const fs = require("fs");
+const mysql = require("mysql2/promise");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const Datastore = require("nedb-promises");
 const { WebSocketServer, WebSocket } = require("ws");
 
 const PORT = Number(process.env.PORT || 3002);
+const MYSQL_URL = process.env.MYSQL_URL || "mysql://root:password@localhost:3306/agetopia";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret-in-production";
 const TILE = 32;
 const WORLD_WIDTH = 240;
@@ -37,22 +37,12 @@ app.use((req, res, next) => {
   next();
 });
 
-const dataDir = path.join(__dirname, "data");
-fs.mkdirSync(dataDir, { recursive: true });
-
-const usersDB = Datastore.create({ filename: path.join(dataDir, "users.db"), autoload: true });
-const worldDB = Datastore.create({ filename: path.join(dataDir, "world_blocks.db"), autoload: true });
-const profilesDB = Datastore.create({ filename: path.join(dataDir, "profiles.db"), autoload: true });
-const growingPlantsDB = Datastore.create({ filename: path.join(dataDir, "growing_plants.db"), autoload: true });
-const inventoriesDB = Datastore.create({ filename: path.join(dataDir, "inventories.db"), autoload: true });
-
-usersDB.ensureIndex({ fieldName: "username", unique: true });
-worldDB.ensureIndex({ fieldName: "key", unique: true });
-profilesDB.ensureIndex({ fieldName: "profileId", unique: true });
-growingPlantsDB.ensureIndex({ fieldName: "key", unique: true });
-inventoriesDB.ensureIndex({ fieldName: "key", unique: true });
-
-let nextUserId = 1;
+let pool;
+let usersDB;
+let worldDB;
+let profilesDB;
+let growingPlantsDB;
+let inventoriesDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 
@@ -99,13 +89,245 @@ function getWorldDrops(worldName) {
   return worldDrops.get(worldName);
 }
 
-async function initStores() {
-  const users = await usersDB.find({});
-  for (const user of users) {
-    if (typeof user.id === "number" && user.id >= nextUserId) {
-      nextUserId = user.id + 1;
+async function ensureSchema() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(191) NOT NULL UNIQUE,
+    passwordHash VARCHAR(255) NOT NULL,
+    createdAt DATETIME NOT NULL
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS world_blocks (
+    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
+    worldName VARCHAR(64) NOT NULL,
+    x INT NOT NULL,
+    y INT NOT NULL,
+    tile INT NOT NULL,
+    updatedAt DATETIME NOT NULL,
+    INDEX world_idx (worldName)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS profiles (
+    profileId VARCHAR(191) PRIMARY KEY,
+    userId INT NOT NULL,
+    worldName VARCHAR(64) NOT NULL,
+    spawnX INT NULL,
+    spawnY INT NULL
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS growing_plants (
+    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
+    worldName VARCHAR(64) NOT NULL,
+    x INT NOT NULL,
+    y INT NOT NULL,
+    sourceBlock INT NOT NULL,
+    dropCount INT NOT NULL,
+    totalTime INT NOT NULL,
+    plantedAt BIGINT NOT NULL,
+    fullGrown BOOLEAN NOT NULL DEFAULT FALSE,
+    createdAt DATETIME NOT NULL,
+    INDEX gp_world_idx (worldName)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS inventories (
+    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
+    userId INT NOT NULL,
+    inventory JSON NOT NULL,
+    updatedAt DATETIME NOT NULL,
+    UNIQUE INDEX inv_user_idx (userId)
+  )`);
+}
+
+function buildPoolFromUrl() {
+  const url = new URL(MYSQL_URL);
+  const sslParam = url.searchParams.get("ssl");
+  let ssl;
+  if (sslParam === "false") {
+    ssl = undefined;
+  } else if (sslParam && sslParam !== "true") {
+    try {
+      ssl = JSON.parse(sslParam);
+    } catch {
+      ssl = { rejectUnauthorized: false };
     }
+  } else {
+    // Default: enable SSL but tolerate self-signed (Railway proxies)
+    ssl = { rejectUnauthorized: false };
   }
+
+  return mysql.createPool({
+    host: url.hostname,
+    port: Number(url.port || 3306),
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: url.pathname.replace(/^\//, ""),
+    ssl,
+    waitForConnections: true,
+    connectionLimit: 10,
+  });
+}
+
+function makeUsersRepo() {
+  return {
+    find: async () => {
+      const [rows] = await pool.query("SELECT id, username, passwordHash, createdAt FROM users");
+      return rows;
+    },
+    findOne: async (query = {}) => {
+      if (query.username !== undefined) {
+        const [rows] = await pool.query("SELECT id, username, passwordHash, createdAt FROM users WHERE username = ? LIMIT 1", [query.username]);
+        return rows[0];
+      }
+      if (query.id !== undefined) {
+        const [rows] = await pool.query("SELECT id, username, passwordHash, createdAt FROM users WHERE id = ? LIMIT 1", [query.id]);
+        return rows[0];
+      }
+      return undefined;
+    },
+    insert: async (doc) => {
+      const createdAt = doc.createdAt || new Date().toISOString();
+      const [result] = await pool.query(
+        "INSERT INTO users (username, passwordHash, createdAt) VALUES (?, ?, ?)",
+        [doc.username, doc.passwordHash, createdAt]
+      );
+      return { id: result.insertId, username: doc.username, passwordHash: doc.passwordHash, createdAt };
+    },
+  };
+}
+
+function makeWorldRepo() {
+  return {
+    find: async (query = {}) => {
+      if (!query.worldName) return [];
+      const [rows] = await pool.query("SELECT worldName, x, y, tile FROM world_blocks WHERE worldName = ?", [query.worldName]);
+      return rows;
+    },
+    update: async (filter, doc) => {
+      const key = filter.key || doc.key;
+      if (!key) return;
+      await pool.query(
+        "INSERT INTO world_blocks (`key`, worldName, x, y, tile, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), tile=VALUES(tile), updatedAt=VALUES(updatedAt)",
+        [key, doc.worldName, doc.x, doc.y, doc.tile, doc.updatedAt || new Date().toISOString()]
+      );
+    },
+    remove: async (filter) => {
+      if (filter.key) {
+        await pool.query("DELETE FROM world_blocks WHERE `key` = ?", [filter.key]);
+      }
+    },
+  };
+}
+
+function makeProfilesRepo() {
+  return {
+    findOne: async (query = {}) => {
+      if (!query.profileId) return undefined;
+      const [rows] = await pool.query("SELECT profileId, userId, worldName, spawnX, spawnY FROM profiles WHERE profileId = ? LIMIT 1", [query.profileId]);
+      return rows[0];
+    },
+    update: async (filter, doc, options = {}) => {
+      const profileId = filter.profileId || doc.profileId;
+      if (!profileId) return;
+      const payload = {
+        userId: doc.userId,
+        worldName: doc.worldName,
+        spawnX: doc.spawnX ?? null,
+        spawnY: doc.spawnY ?? null,
+      };
+      const upsert = Boolean(options.upsert);
+      const sql = upsert
+        ? "INSERT INTO profiles (profileId, userId, worldName, spawnX, spawnY) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), worldName=VALUES(worldName), spawnX=VALUES(spawnX), spawnY=VALUES(spawnY)"
+        : "UPDATE profiles SET userId=?, worldName=?, spawnX=?, spawnY=? WHERE profileId=?";
+      const params = upsert
+        ? [profileId, payload.userId, payload.worldName, payload.spawnX, payload.spawnY]
+        : [payload.userId, payload.worldName, payload.spawnX, payload.spawnY, profileId];
+      await pool.query(sql, params);
+    },
+  };
+}
+
+function makeGrowingPlantsRepo() {
+  return {
+    find: async (query = {}) => {
+      if (!query.worldName) return [];
+      const [rows] = await pool.query(
+        "SELECT `key`, worldName, x, y, sourceBlock, dropCount, totalTime, plantedAt, fullGrown, createdAt FROM growing_plants WHERE worldName = ?",
+        [query.worldName]
+      );
+      return rows;
+    },
+    update: async (filter, doc, options = {}) => {
+      const key = filter.key || doc.key;
+      if (!key) return;
+      const upsert = Boolean(options.upsert);
+      const payload = {
+        worldName: doc.worldName,
+        x: doc.x,
+        y: doc.y,
+        sourceBlock: doc.sourceBlock,
+        dropCount: doc.dropCount,
+        totalTime: doc.totalTime,
+        plantedAt: doc.plantedAt,
+        fullGrown: Boolean(doc.fullGrown),
+        createdAt: doc.createdAt || new Date().toISOString(),
+      };
+      const sql = upsert
+        ? "INSERT INTO growing_plants (`key`, worldName, x, y, sourceBlock, dropCount, totalTime, plantedAt, fullGrown, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), sourceBlock=VALUES(sourceBlock), dropCount=VALUES(dropCount), totalTime=VALUES(totalTime), plantedAt=VALUES(plantedAt), fullGrown=VALUES(fullGrown), createdAt=VALUES(createdAt)"
+        : "UPDATE growing_plants SET worldName=?, x=?, y=?, sourceBlock=?, dropCount=?, totalTime=?, plantedAt=?, fullGrown=?, createdAt=? WHERE `key`=?";
+      const params = upsert
+        ? [key, payload.worldName, payload.x, payload.y, payload.sourceBlock, payload.dropCount, payload.totalTime, payload.plantedAt, payload.fullGrown, payload.createdAt]
+        : [payload.worldName, payload.x, payload.y, payload.sourceBlock, payload.dropCount, payload.totalTime, payload.plantedAt, payload.fullGrown, payload.createdAt, key];
+      await pool.query(sql, params);
+    },
+    remove: async (filter) => {
+      if (filter.key) {
+        await pool.query("DELETE FROM growing_plants WHERE `key` = ?", [filter.key]);
+      }
+    },
+  };
+}
+
+function makeInventoriesRepo() {
+  return {
+    findOne: async (query = {}) => {
+      const key = query.key;
+      if (!key) return undefined;
+      const [rows] = await pool.query("SELECT `key`, userId, inventory, updatedAt FROM inventories WHERE `key` = ? LIMIT 1", [key]);
+      const row = rows[0];
+      if (!row) return undefined;
+      let inventory = {};
+      try {
+        inventory = typeof row.inventory === "string" ? JSON.parse(row.inventory) : row.inventory || {};
+      } catch {
+        inventory = {};
+      }
+      return { key: row.key, userId: row.userId, inventory, updatedAt: row.updatedAt };
+    },
+    update: async (filter, doc, options = {}) => {
+      const key = filter.key || doc.key;
+      if (!key) return;
+      const inventoryJson = JSON.stringify(doc.inventory || {});
+      const upsert = Boolean(options.upsert);
+      const updatedAt = doc.updatedAt || new Date().toISOString();
+      const sql = upsert
+        ? "INSERT INTO inventories (`key`, userId, inventory, updatedAt) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), inventory=VALUES(inventory), updatedAt=VALUES(updatedAt)"
+        : "UPDATE inventories SET userId=?, inventory=?, updatedAt=? WHERE `key`=?";
+      const params = upsert
+        ? [key, doc.userId, inventoryJson, updatedAt]
+        : [doc.userId, inventoryJson, updatedAt, key];
+      await pool.query(sql, params);
+    },
+  };
+}
+
+async function initStores() {
+  pool = buildPoolFromUrl();
+  await ensureSchema();
+  usersDB = makeUsersRepo();
+  worldDB = makeWorldRepo();
+  profilesDB = makeProfilesRepo();
+  growingPlantsDB = makeGrowingPlantsRepo();
+  inventoriesDB = makeInventoriesRepo();
 }
 
 function createToken(user) {
@@ -227,15 +449,7 @@ app.post("/api/register", async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = {
-      id: nextUserId,
-      username,
-      passwordHash,
-      createdAt: new Date().toISOString(),
-    };
-    nextUserId += 1;
-
-    await usersDB.insert(user);
+    const user = await usersDB.insert({ username, passwordHash });
 
     const token = createToken(user);
     return res.json({ token, username: user.username });

@@ -1972,6 +1972,87 @@ window.addEventListener("mouseup", (e) => {
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
+// Mobile touch controls
+const mobileControls = {
+  up: false,
+  down: false,
+  left: false,
+  right: false,
+};
+
+function setupMobileControls() {
+  const btnUp = document.getElementById("btnUp");
+  const btnDown = document.getElementById("btnDown");
+  const btnLeft = document.getElementById("btnLeft");
+  const btnRight = document.getElementById("btnRight");
+  const btnJump = document.getElementById("btnJump");
+  const btnFullscreen = document.getElementById("btnFullscreen");
+
+  if (!btnUp) return; // Controls not in DOM
+
+  const setupButton = (btn, keyCode, mobileKey) => {
+    btn.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      mobileControls[mobileKey] = true;
+      keys.add(keyCode);
+    });
+    btn.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      mobileControls[mobileKey] = false;
+      keys.delete(keyCode);
+    });
+    btn.addEventListener("mousedown", () => {
+      mobileControls[mobileKey] = true;
+      keys.add(keyCode);
+    });
+    btn.addEventListener("mouseup", () => {
+      mobileControls[mobileKey] = false;
+      keys.delete(keyCode);
+    });
+  };
+
+  setupButton(btnUp, "ArrowUp", "up");
+  setupButton(btnDown, "ArrowDown", "down");
+  setupButton(btnLeft, "ArrowLeft", "left");
+  setupButton(btnRight, "ArrowRight", "right");
+
+  btnJump.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    keys.add("Space");
+  });
+  btnJump.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    keys.delete("Space");
+  });
+  btnJump.addEventListener("mousedown", () => {
+    keys.add("Space");
+  });
+  btnJump.addEventListener("mouseup", () => {
+    keys.delete("Space");
+  });
+
+  // Fullscreen button
+  btnFullscreen.addEventListener("click", toggleFullscreen);
+  btnFullscreen.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    toggleFullscreen();
+  });
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch((err) => {
+      console.log("Fullscreen request failed:", err);
+    });
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    }
+  }
+}
+
+setupMobileControls();
+
 setupAuthPanel().then(() => {
   updateHUD();
   requestAnimationFrame(frame);

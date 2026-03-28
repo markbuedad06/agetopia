@@ -34,6 +34,8 @@ body {
 
 .login-shell {
   width: min(100%, 440px);
+  padding: 1rem;
+  margin: auto;
 }
 
 .login-card {
@@ -449,6 +451,81 @@ body {
   margin-top: 0.1rem;
 }
 
+/* Mobile Controls */
+.mobile-controls {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  touch-action: none;
+}
+
+.movement-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.arrow-row {
+  display: flex;
+  gap: 4px;
+}
+
+.arrow-btn,
+.action-btn {
+  width: 50px;
+  height: 50px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(110, 231, 183, 0.2);
+  color: var(--accent);
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: all 0.1s ease;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.arrow-btn:active,
+.action-btn:active {
+  background: rgba(110, 231, 183, 0.4);
+  transform: scale(0.95);
+}
+
+.arrow-btn:hover,
+.action-btn:hover {
+  box-shadow: 0 0 12px rgba(110, 231, 183, 0.5);
+}
+
+.mobile-action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  flex: 1;
+  font-size: 0.9rem;
+  height: 45px;
+  border-color: var(--accent-2);
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--accent-2);
+}
+
+.action-btn:active {
+  background: rgba(251, 191, 36, 0.3);
+}
+
+.action-btn:hover {
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.5);
+}
+
 @media (max-width: 900px) {
   .menu-modal,
   .settings-modal {
@@ -468,5 +545,116 @@ body {
   .slot-icon {
     width: 16px;
     height: 16px;
+  }
+
+  /* Show mobile controls on mobile */
+  .mobile-controls {
+    display: flex;
+  }
+
+  /* Adjust layout for mobile */
+  .inventory-toggle-btn {
+    bottom: 150px;
+    right: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+  }
+
+  .gem-counter {
+    top: auto;
+    bottom: 240px;
+    right: 20px;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.9rem;
+  }
+
+  .gem-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .hud-top {
+    padding: 0.35rem 0.5rem;
+  }
+
+  .hud-bottom {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .corner-controls {
+    gap: 0.3rem;
+  }
+
+  .menu-btn {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .online-state {
+    font-size: 0.65rem;
+    padding: 0.12rem 0.45rem;
+  }
+
+  .inventory-modal {
+    width: 95vw;
+    max-width: none;
+    padding: 0.8rem;
+  }
+
+  .inventory-modal h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .menu-item {
+    padding: 0.3rem 0.45rem;
+    font-size: 0.7rem;
+  }
+
+  .inventory {
+    gap: 0.3rem;
+  }
+
+  .slot {
+    min-width: 56px;
+    padding: 0.25rem 0.3rem;
+  }
+
+  .slot-icon {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .arrow-btn,
+  .action-btn {
+    width: 45px;
+    height: 45px;
+    font-size: 1rem;
+  }
+
+  .mobile-action-buttons {
+    gap: 6px;
+  }
+
+  .inventory-toggle-btn {
+    bottom: 130px;
+  }
+
+  .gem-counter {
+    bottom: 210px;
+    right: 15px;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .movement-pad {
+    gap: 3px;
+  }
+
+  .arrow-row {
+    gap: 3px;
   }
 }

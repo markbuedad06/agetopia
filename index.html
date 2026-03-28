@@ -38,6 +38,23 @@
     </div>
 
     <canvas id="game" aria-label="Agetopia game canvas"></canvas>
+    
+    <!-- Mobile Touch Controls -->
+    <div id="mobileControls" class="mobile-controls">
+      <div class="movement-pad">
+        <button id="btnUp" class="arrow-btn up" aria-label="Move up">▲</button>
+        <div class="arrow-row">
+          <button id="btnLeft" class="arrow-btn left" aria-label="Move left">◄</button>
+          <button id="btnDown" class="arrow-btn down" aria-label="Move down">▼</button>
+          <button id="btnRight" class="arrow-btn right" aria-label="Move right">►</button>
+        </div>
+      </div>
+      <div class="mobile-action-buttons">
+        <button id="btnJump" class="action-btn jump" aria-label="Jump">⬆</button>
+        <button id="btnFullscreen" class="action-btn fullscreen" aria-label="Fullscreen">⛶</button>
+      </div>
+    </div>
+    
     <button id="inventoryBtn" type="button" class="inventory-toggle-btn">Inventory</button>
     <div id="gemCounter" class="gem-counter">
       <img src="assets/items/gem.svg" alt="Gem" class="gem-icon">

@@ -13,7 +13,7 @@ A lightweight Growtopia-inspired sandbox with optional online multiplayer.
 - Separate block and item texture folders for easy editing
 - Account system (register/login)
 - Online multiplayer sync over WebSocket
-- File-backed database persistence for accounts and world edits
+- MySQL persistence for accounts and world edits
 - Punch animation when mining and fighting
 - Player health bars with multiplayer punch damage and respawn
 - Punch knockback impulse on player hits
@@ -62,10 +62,12 @@ For best results, use a local static server so browser security policies are pre
 
 ### Database
 
-- Database files are created in `data/`
+- Uses MySQL (set `MYSQL_URL`; defaults to `mysql://root:password@localhost:3306/agetopia`)
+- Railway: include SSL (the server now defaults to `ssl={rejectUnauthorized:false}` if you omit `?ssl=...`)
+- For local MySQL without SSL, append `?ssl=false` to `MYSQL_URL`.
 - Stored data:
-  - user accounts
-  - persisted world block changes
+	- user accounts
+	- persisted world block changes
 	- player inventories, plants, and drops
 
 ## Deploy to Railway (trial-friendly)
@@ -75,10 +77,10 @@ For best results, use a local static server so browser security policies are pre
 3) Service settings:
 	 - Build: `npm install`
 	 - Start: `npm start`
-	 - Env vars: set `JWT_SECRET=<strong-random-value>`
-4) Add a volume mounted at `/app/data` so NeDB files persist (`data/` is already .gitignored locally).
+	 - Env vars: set `JWT_SECRET=<strong-random-value>` and `MYSQL_URL=<railway-mysql-url>`
+4) Add a MySQL add-on in Railway (or point `MYSQL_URL` at any external MySQL cluster).
 5) Deploy, then open the Railway domain (it serves both the API and `index.html/login.html`).
 
 Notes
 - Server listens on `process.env.PORT || 3002`; Railway will inject `PORT`.
-- Keep secrets and `data/` out of git (already ignored).
+- Keep secrets out of git.

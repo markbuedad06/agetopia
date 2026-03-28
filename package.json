@@ -2,7 +2,7 @@
   "name": "agetopia",
   "version": "1.0.0",
   "private": true,
-  "description": "Growtopia-like sandbox with online multiplayer, accounts, and SQLite persistence",
+  "description": "Growtopia-like sandbox with online multiplayer, accounts, and MySQL persistence",
   "main": "server.js",
   "scripts": {
     "server": "node server.js",
@@ -12,7 +12,7 @@
     "bcryptjs": "^2.4.3",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "nedb-promises": "^6.2.3",
+    "mysql2": "^3.11.4",
     "ws": "^8.18.1"
   }
 }
