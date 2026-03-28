@@ -1970,7 +1970,7 @@ window.addEventListener("mouseup", (e) => {
   if (e.button === 0) leftDown = false;
 });
 
-// Mobile touch punching/breaking blocks
+// Mobile touch punching/breaking blocks - track mouse position and update punch/place based on mode
 canvas.addEventListener("touchmove", (e) => {
   if (!gameplayUnlocked) return;
   e.preventDefault();
@@ -1979,24 +1979,6 @@ canvas.addEventListener("touchmove", (e) => {
   const rect = canvas.getBoundingClientRect();
   mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
   mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
-});
-
-canvas.addEventListener("touchstart", (e) => {
-  if (!gameplayUnlocked) return;
-  e.preventDefault();
-  const touch = e.touches[0];
-  if (!touch) return;
-  const rect = canvas.getBoundingClientRect();
-  mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
-  mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
-  leftDown = true;
-  tryPunchPlayer(currentNow);
-});
-
-canvas.addEventListener("touchend", (e) => {
-  if (!gameplayUnlocked) return;
-  e.preventDefault();
-  leftDown = false;
 });
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -2014,7 +1996,7 @@ function setupMobileControls() {
   const btnDown = document.getElementById("btnDown");
   const btnLeft = document.getElementById("btnLeft");
   const btnRight = document.getElementById("btnRight");
-  const btnJump = document.getElementById("btnJump");
+  const btnPunchPlace = document.getElementById("btnPunchPlace");
   const btnFullscreen = document.getElementById("btnFullscreen");
 
   if (!btnUp) return; // Controls not in DOM
@@ -2045,20 +2027,44 @@ function setupMobileControls() {
   setupButton(btnLeft, "ArrowLeft", "left");
   setupButton(btnRight, "ArrowRight", "right");
 
-  btnJump.addEventListener("touchstart", (e) => {
+  // Punch/Place toggle button
+  let placingMode = false;
+  btnPunchPlace.addEventListener("click", () => {
+    placingMode = !placingMode;
+    if (placingMode) {
+      btnPunchPlace.classList.add("place");
+      btnPunchPlace.textContent = "📦";
+    } else {
+      btnPunchPlace.classList.remove("place");
+      btnPunchPlace.textContent = "👊";
+    }
+  });
+
+  // Override canvas touch events to use punch/place mode
+  const canvasTouchStart = (e) => {
+    if (!gameplayUnlocked || e.touches.length === 0) return;
     e.preventDefault();
-    keys.add("Space");
-  });
-  btnJump.addEventListener("touchend", (e) => {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
+    mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
+    if (placingMode) {
+      rightDown = true;
+    } else {
+      leftDown = true;
+      tryPunchPlayer(currentNow);
+    }
+  };
+
+  const canvasTouchEnd = (e) => {
+    if (!gameplayUnlocked) return;
     e.preventDefault();
-    keys.delete("Space");
-  });
-  btnJump.addEventListener("mousedown", () => {
-    keys.add("Space");
-  });
-  btnJump.addEventListener("mouseup", () => {
-    keys.delete("Space");
-  });
+    leftDown = false;
+    rightDown = false;
+  };
+
+  canvas.addEventListener("touchstart", canvasTouchStart);
+  canvas.addEventListener("touchend", canvasTouchEnd);
 
   // Fullscreen button
   btnFullscreen.addEventListener("click", toggleFullscreen);

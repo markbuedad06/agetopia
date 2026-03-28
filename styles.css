@@ -459,8 +459,52 @@ body {
   z-index: 30;
   display: none;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   touch-action: none;
+  align-items: center;
+}
+
+.punch-place-btn {
+  width: 60px;
+  height: 60px;
+  border: 3px solid var(--accent);
+  border-radius: 10px;
+  background: rgba(110, 231, 183, 0.2);
+  color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: bold;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: all 0.15s ease;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.punch-place-btn:active {
+  background: rgba(110, 231, 183, 0.4);
+  transform: scale(0.95);
+}
+
+.punch-place-btn:hover {
+  box-shadow: 0 0 15px rgba(110, 231, 183, 0.6);
+}
+
+.punch-place-btn.place {
+  border-color: var(--accent-2);
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--accent-2);
+}
+
+.punch-place-btn.place:active {
+  background: rgba(251, 191, 36, 0.3);
+}
+
+.punch-place-btn.place:hover {
+  box-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
 }
 
 .movement-pad {
@@ -510,9 +554,9 @@ body {
 }
 
 .action-btn {
-  flex: 1;
-  font-size: 0.9rem;
-  height: 45px;
+  width: 50px;
+  height: 50px;
+  font-size: 1.2rem;
   border-color: var(--accent-2);
   background: rgba(251, 191, 36, 0.15);
   color: var(--accent-2);
@@ -552,9 +596,15 @@ body {
     display: flex;
   }
 
+  .punch-place-btn {
+    width: 55px;
+    height: 55px;
+    font-size: 1.3rem;
+  }
+
   /* Adjust layout for mobile */
   .inventory-toggle-btn {
-    bottom: 150px;
+    bottom: 190px;
     right: 0.5rem;
     padding: 0.4rem 0.8rem;
     font-size: 0.8rem;
@@ -562,7 +612,7 @@ body {
 
   .gem-counter {
     top: auto;
-    bottom: 240px;
+    bottom: 280px;
     right: 20px;
     padding: 0.5rem 0.8rem;
     font-size: 0.9rem;
@@ -639,12 +689,18 @@ body {
     gap: 6px;
   }
 
+  .punch-place-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 1.1rem;
+  }
+
   .inventory-toggle-btn {
-    bottom: 130px;
+    bottom: 160px;
   }
 
   .gem-counter {
-    bottom: 210px;
+    bottom: 240px;
     right: 15px;
     font-size: 0.85rem;
     padding: 0.4rem 0.6rem;
