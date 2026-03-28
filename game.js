@@ -246,6 +246,7 @@ let mouseX = 0;
 let mouseY = 0;
 let leftDown = false;
 let suppressBreakUntil = 0;
+let lastSeedPlantTime = 0;
 let currentNow = performance.now();
 let digitCombo = "";
 let digitComboExpiresAt = 0;
@@ -1022,6 +1023,9 @@ function tryPlace() {
   
   // Handle seed planting vs block placement
   if (isSeedItem(selectedItem)) {
+    // Check seed planting cooldown (0.4s between plants to prevent overlapping)
+    if (currentNow < lastSeedPlantTime + 400) return;
+    
     // Plant seed - keep tile empty (0) and track in growingPlants map
     const rarity = getItemRarity(selectedItem);
     const growthTime = getGrowthTimeSeconds(rarity);
@@ -1039,7 +1043,8 @@ function tryPlace() {
       plantedAt: plantedAt
     });
     setTile(tx, ty, 0);
-    // Suppress breaking for 500ms after planting to prevent instant destruction
+    // Update seed plant cooldown and suppress breaking
+    lastSeedPlantTime = currentNow;
     suppressBreakUntil = currentNow + 500;
     // Send plant info to server
     sendSocket({ 
