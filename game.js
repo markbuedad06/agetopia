@@ -100,6 +100,7 @@ const inventory = {
 };
 
 let selectedSlot = 0;
+let lastInventorySlot = 0; // Track last selected inventory slot for punch toggle
 
 const world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
 const remotePlayers = new Map();
@@ -522,9 +523,16 @@ function setupMenuInteractions() {
     }
   });
 
-  // Punch button click
+  // Punch button click - toggle between punch and last inventory slot
   btnPunch?.addEventListener("click", () => {
-    selectedSlot = -1; // -1 means punch mode
+    if (selectedSlot === -1) {
+      // Currently in punch mode, switch back to last inventory slot
+      selectedSlot = lastInventorySlot;
+    } else {
+      // Currently in inventory mode, switch to punch
+      lastInventorySlot = selectedSlot; // Save current slot
+      selectedSlot = -1; // -1 means punch mode
+    }
     updateHUD();
   });
 
@@ -552,6 +560,7 @@ function setupMenuInteractions() {
       if (isNaN(slotIndex) || slotIndex < 0 || slotIndex >= 5) return;
       
       selectedSlot = slotIndex;
+      lastInventorySlot = slotIndex; // Update last inventory slot
       updateHUD();
     });
   }
@@ -567,6 +576,7 @@ function setupMenuInteractions() {
       if (isNaN(slotIndex) || slotIndex < 0 || slotIndex >= hotbarOrder.length) return;
       
       selectedSlot = slotIndex;
+      lastInventorySlot = slotIndex; // Update last inventory slot
       updateHUD();
     });
   }
@@ -2030,6 +2040,7 @@ window.addEventListener("keydown", (e) => {
     const idx = Number(e.code.slice(-1)) - 1;
     if (idx >= 0 && idx < hotbarOrder.length) {
       selectedSlot = idx;
+      lastInventorySlot = idx; // Update last inventory slot
     }
 
     const digitValue = Number(e.code.slice(-1));
