@@ -8,7 +8,21 @@ const jwt = require("jsonwebtoken");
 const { WebSocketServer, WebSocket } = require("ws");
 
 const PORT = Number(process.env.PORT || 3002);
-const MYSQL_URL = process.env.MYSQL_URL || "mysql://root:password@localhost:3306/agetopia";
+
+// Build MYSQL_URL from Railway env vars (if available) or use MYSQL_URL directly
+let MYSQL_URL = process.env.MYSQL_URL;
+if (!MYSQL_URL && process.env.MYSQLHOST) {
+  const user = process.env.MYSQLUSER || "root";
+  const pass = process.env.MYSQLPASSWORD || "";
+  const host = process.env.MYSQLHOST;
+  const port = process.env.MYSQLPORT || 3306;
+  const db = process.env.MYSQLDATABASE || "agetopia";
+  MYSQL_URL = `mysql://${user}:${pass}@${host}:${port}/${db}`;
+  console.log("Using Railway MySQL env vars for connection");
+} else if (!MYSQL_URL) {
+  MYSQL_URL = "mysql://root:password@localhost:3306/agetopia";
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret-in-production";
 const TILE = 32;
 const WORLD_WIDTH = 240;
