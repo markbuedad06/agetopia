@@ -66,4 +66,19 @@ For best results, use a local static server so browser security policies are pre
 - Stored data:
   - user accounts
   - persisted world block changes
-  - last player spawn position
+	- player inventories, plants, and drops
+
+## Deploy to Railway (trial-friendly)
+
+1) Push this repo to GitHub (already set up for `npm start`).
+2) In Railway, create a new project from the GitHub repo.
+3) Service settings:
+	 - Build: `npm install`
+	 - Start: `npm start`
+	 - Env vars: set `JWT_SECRET=<strong-random-value>`
+4) Add a volume mounted at `/app/data` so NeDB files persist (`data/` is already .gitignored locally).
+5) Deploy, then open the Railway domain (it serves both the API and `index.html/login.html`).
+
+Notes
+- Server listens on `process.env.PORT || 3002`; Railway will inject `PORT`.
+- Keep secrets and `data/` out of git (already ignored).
