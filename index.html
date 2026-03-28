@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agetopia</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="game-shell">
+    <header class="hud-top">
+      <div class="corner-controls">
+        <div id="onlineState" class="online-state offline">Offline</div>
+        <button id="menuBtn" type="button" class="menu-btn">Menu</button>
+      </div>
+      <div id="authMessage" class="auth-message">Connecting...</div>
+    </header>
+
+    <div id="menuModal" class="menu-modal hidden" role="dialog" aria-label="Game menu">
+      <button id="menuSettingsBtn" type="button" class="menu-item">Settings</button>
+      <button id="menuExitBtn" type="button" class="menu-item">Exit World</button>
+      <button id="menuLogoutBtn" type="button" class="menu-item danger">Logout</button>
+    </div>
+
+    <div id="settingsModal" class="settings-modal hidden" role="dialog" aria-label="Settings">
+      <h2>Settings</h2>
+      <label for="graphicsScale">Graphics Quality</label>
+      <select id="graphicsScale">
+        <option value="0.75">Low</option>
+        <option value="1" selected>Normal</option>
+        <option value="1.25">High</option>
+      </select>
+
+      <label class="setting-toggle"><input id="toggleReachRing" type="checkbox" checked /> Show reach ring</label>
+      <label class="setting-toggle"><input id="toggleClouds" type="checkbox" checked /> Show sky clouds</label>
+
+      <button id="settingsCloseBtn" type="button" class="menu-item">Close</button>
+    </div>
+
+    <canvas id="game" aria-label="Agetopia game canvas"></canvas>
+    <button id="inventoryBtn" type="button" class="inventory-toggle-btn">Inventory</button>
+    <div id="gemCounter" class="gem-counter">
+      <img src="assets/items/gem.svg" alt="Gem" class="gem-icon">
+      <span id="gemCount" class="gem-count">0</span>
+    </div>
+    
+    <footer class="hud-bottom">
+      <div id="status">Loading...</div>
+    </footer>
+
+    <div id="inventoryModal" class="inventory-modal hidden" role="dialog" aria-label="Inventory">
+      <h3>Inventory</h3>
+      <div id="inventory" class="inventory"></div>
+      <button id="inventoryCloseBtn" type="button" class="menu-item">Close</button>
+    </div>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>

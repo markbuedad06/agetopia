@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agetopia Login</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card" aria-label="Login or register">
+      <h1>Agetopia</h1>
+      <p class="login-subtitle">Login or register before entering the world.</p>
+
+      <label for="loginUser">Username</label>
+      <input id="loginUser" type="text" placeholder="username" minlength="3" maxlength="24" autocomplete="username" />
+
+      <label for="loginPass">Password</label>
+      <input id="loginPass" type="password" placeholder="password" minlength="6" maxlength="64" autocomplete="current-password" />
+
+      <div class="login-actions">
+        <button id="loginBtn" type="button">Login</button>
+        <button id="registerBtn" type="button" class="secondary">Register</button>
+      </div>
+
+      <p id="loginMessage" class="auth-message" role="status">Enter your account details to continue.</p>
+    </section>
+  </main>
+
+  <script>
+    const TOKEN_KEY = "agetopia_token";
+    const PLAY_URL = "worlds.html?online=1";
+    const loginUserEl = document.getElementById("loginUser");
+    const loginPassEl = document.getElementById("loginPass");
+    const loginBtn = document.getElementById("loginBtn");
+    const registerBtn = document.getElementById("registerBtn");
+    const loginMessageEl = document.getElementById("loginMessage");
+
+    function setMessage(message) {
+      loginMessageEl.textContent = message;
+    }
+
+    async function apiRequest(path, payload, token) {
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      try {
+        const response = await fetch(path, {
+          method: payload ? "POST" : "GET",
+          headers,
+          body: payload ? JSON.stringify(payload) : undefined,
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || `Request failed (${response.status})`);
+        }
+        return data;
+      } catch (err) {
+        if (err instanceof TypeError && err.message.includes("Failed to fetch")) {
+          throw new Error("Cannot connect to server on localhost:3002. Start the backend with: npm run server");
+        }
+        throw err;
+      }
+    }
+
+    async function submit(mode) {
+      const username = (loginUserEl.value || "").trim();
+      const password = loginPassEl.value || "";
+
+      if (!username || !password) {
+        setMessage("Enter username and password first.");
+        return;
+      }
+
+      try {
+        const endpoint = mode === "register" ? "/api/register" : "/api/login";
+        const data = await apiRequest(endpoint, { username, password });
+        localStorage.setItem(TOKEN_KEY, data.token);
+        setMessage(`${mode === "register" ? "Registered" : "Logged in"} as ${data.username}. Entering world hub...`);
+        window.location.href = PLAY_URL;
+      } catch (error) {
+        setMessage(error.message || "Unable to sign in.");
+      }
+    }
+
+    async function restoreSessionIfValid() {
+      const notice = sessionStorage.getItem("agetopia_login_notice");
+      if (notice) {
+        setMessage(notice);
+        sessionStorage.removeItem("agetopia_login_notice");
+      }
+
+      const token = localStorage.getItem(TOKEN_KEY) || "";
+      if (!token) return;
+
+      try {
+        const me = await apiRequest("/api/me", null, token);
+        setMessage(`Welcome back ${me.username}. Entering world hub...`);
+        window.location.href = PLAY_URL;
+      } catch {
+        localStorage.removeItem(TOKEN_KEY);
+      }
+    }
+
+    loginBtn.addEventListener("click", () => submit("login"));
+    registerBtn.addEventListener("click", () => submit("register"));
+
+    loginPassEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        submit("login");
+      }
+    });
+
+    restoreSessionIfValid();
+  </script>
+</body>
+</html>

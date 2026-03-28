@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agetopia Worlds</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card" aria-label="World selection">
+      <h1>World Hub</h1>
+      <p class="login-subtitle">Create a new world or find an existing one.</p>
+
+      <label for="worldName">World name</label>
+      <input id="worldName" type="text" placeholder="my_world" maxlength="24" />
+
+      <div class="login-actions">
+        <button id="findWorldBtn" type="button">Find</button>
+        <button id="createWorldBtn" type="button" class="secondary">Create</button>
+      </div>
+
+      <div id="worldList" class="world-list"></div>
+
+      <div class="login-actions">
+        <button id="playDefaultBtn" type="button">Play Default</button>
+        <button id="logoutBtn" type="button" class="secondary">Logout</button>
+      </div>
+
+      <p id="worldMessage" class="auth-message" role="status">Choose a world to enter.</p>
+    </section>
+  </main>
+
+  <script>
+    const TOKEN_KEY = "agetopia_token";
+    const WORLD_STORE_KEY = "agetopia_worlds";
+    const LAST_WORLD_KEY = "agetopia_world";
+
+    const worldNameEl = document.getElementById("worldName");
+    const findWorldBtn = document.getElementById("findWorldBtn");
+    const createWorldBtn = document.getElementById("createWorldBtn");
+    const worldListEl = document.getElementById("worldList");
+    const playDefaultBtn = document.getElementById("playDefaultBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const worldMessageEl = document.getElementById("worldMessage");
+
+    function setMessage(text) {
+      worldMessageEl.textContent = text;
+    }
+
+    function normalizeWorldName(raw) {
+      const safe = String(raw || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+      return safe.slice(0, 24);
+    }
+
+    function readWorlds() {
+      try {
+        const worlds = JSON.parse(localStorage.getItem(WORLD_STORE_KEY) || "[]");
+        if (!Array.isArray(worlds)) return [];
+        return worlds.filter((name) => typeof name === "string" && name.length > 0);
+      } catch {
+        return [];
+      }
+    }
+
+    function writeWorlds(worlds) {
+      localStorage.setItem(WORLD_STORE_KEY, JSON.stringify(worlds));
+    }
+
+    function joinWorld(worldName) {
+      const clean = normalizeWorldName(worldName) || "default";
+      localStorage.setItem(LAST_WORLD_KEY, clean);
+      window.location.href = `index.html?online=1&world=${encodeURIComponent(clean)}`;
+    }
+
+    function renderWorlds() {
+      const worlds = readWorlds();
+      if (worlds.length === 0) {
+        worldListEl.innerHTML = "<p class=\"world-empty\">No saved worlds yet.</p>";
+        return;
+      }
+
+      worldListEl.innerHTML = "";
+      worlds.forEach((world) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "world-row";
+        row.textContent = world;
+        row.addEventListener("click", () => joinWorld(world));
+        worldListEl.appendChild(row);
+      });
+    }
+
+    function requireSession() {
+      const token = localStorage.getItem(TOKEN_KEY) || "";
+      if (!token) {
+        window.location.href = "login.html";
+      }
+    }
+
+    findWorldBtn.addEventListener("click", () => {
+      const world = normalizeWorldName(worldNameEl.value);
+      if (!world) {
+        setMessage("Enter a valid world name first.");
+        return;
+      }
+      setMessage(`Joining ${world}...`);
+      joinWorld(world);
+    });
+
+    createWorldBtn.addEventListener("click", () => {
+      const world = normalizeWorldName(worldNameEl.value);
+      if (!world) {
+        setMessage("Enter a valid world name first.");
+        return;
+      }
+
+      const worlds = readWorlds();
+      if (!worlds.includes(world)) {
+        worlds.unshift(world);
+      }
+      writeWorlds(worlds.slice(0, 12));
+      renderWorlds();
+      setMessage(`Created ${world}. Entering world...`);
+      joinWorld(world);
+    });
+
+    playDefaultBtn.addEventListener("click", () => joinWorld("default"));
+
+    logoutBtn.addEventListener("click", () => {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = "login.html";
+    });
+
+    requireSession();
+    renderWorlds();
+  </script>
+</body>
+</html>

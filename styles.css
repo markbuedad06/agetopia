@@ -1,0 +1,472 @@
+:root {
+  --bg-deep: #131018;
+  --bg-mid: #241c2f;
+  --panel: #1f1a29;
+  --panel-border: #3d3152;
+  --text: #f4f2f7;
+  --accent: #6ee7b7;
+  --accent-2: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100vh;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(251, 191, 36, 0.2), transparent 35%),
+    radial-gradient(circle at 80% 15%, rgba(110, 231, 183, 0.18), transparent 35%),
+    linear-gradient(180deg, var(--bg-mid), var(--bg-deep));
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.login-shell {
+  width: min(100%, 440px);
+}
+
+.login-card {
+  border: 2px solid var(--panel-border);
+  border-radius: 14px;
+  background: rgba(22, 16, 31, 0.92);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+  padding: 1.2rem;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.login-subtitle {
+  margin: 0.35rem 0 0.95rem;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.login-card label {
+  display: block;
+  margin-top: 0.55rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.84rem;
+}
+
+.login-card input,
+.login-card button {
+  width: 100%;
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  color: var(--text);
+  background: #2a203a;
+}
+
+.login-card button {
+  cursor: pointer;
+  background: #2b5d44;
+  border-color: #3a9066;
+}
+
+.login-card button.secondary {
+  background: #3a2b4f;
+  border-color: #654488;
+}
+
+.login-actions {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.world-list {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.world-empty {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
+.world-row {
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: #2a203a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.world-row:hover {
+  border-color: #7e62a6;
+}
+
+.game-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: none;
+  border-radius: 0;
+  background: rgba(22, 16, 31, 0.92);
+  backdrop-filter: blur(4px);
+  box-shadow: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.hud-top {
+  padding: 0.45rem 0.75rem;
+  background: linear-gradient(90deg, rgba(61, 49, 82, 0.6), rgba(31, 26, 41, 0.95));
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+}
+
+.hud-bottom {
+  padding: 0.75rem 1rem;
+  background: linear-gradient(90deg, rgba(61, 49, 82, 0.6), rgba(31, 26, 41, 0.95));
+  flex-shrink: 0;
+}
+
+.corner-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.online-state {
+  font-size: 0.76rem;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #5e4c7e;
+  background: #2a203a;
+}
+
+.menu-btn {
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.24rem 0.65rem;
+  font: inherit;
+  font-size: 0.76rem;
+  color: var(--text);
+  background: #2a203a;
+  cursor: pointer;
+}
+
+.menu-btn:hover {
+  border-color: #7e62a6;
+}
+
+.menu-modal,
+.settings-modal {
+  position: absolute;
+  top: 2.6rem;
+  right: 0.75rem;
+  min-width: 210px;
+  padding: 0.55rem;
+  border: 1px solid #5e4c7e;
+  border-radius: 12px;
+  background: rgba(27, 20, 39, 0.96);
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.38);
+  z-index: 25;
+}
+
+.settings-modal {
+  min-width: 260px;
+}
+
+.settings-modal h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.settings-modal label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+}
+
+.settings-modal select {
+  width: 100%;
+  margin-bottom: 0.55rem;
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.32rem 0.45rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: #2a203a;
+}
+
+.setting-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.menu-item {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 0.3rem;
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.38rem 0.55rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: #2a203a;
+  cursor: pointer;
+}
+
+.menu-item:last-child {
+  margin-bottom: 0;
+}
+
+.menu-item:hover {
+  border-color: #7e62a6;
+}
+
+.menu-item.danger {
+  border-color: #8e4155;
+  color: #ffd5dd;
+}
+
+.hidden {
+  display: none;
+}
+
+.online-state.online {
+  border-color: #2ea06a;
+  color: #c8ffe5;
+  background: #173829;
+}
+
+.online-state.offline {
+  border-color: #9b4a5a;
+  color: #ffd5dd;
+  background: #3a1d27;
+}
+
+.auth-message {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  opacity: 0.82;
+  text-align: right;
+}
+
+#game {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border-top: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  position: relative;
+  z-index: 1;
+}
+
+.hud-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.inventory-toggle-btn {
+  position: absolute;
+  bottom: 80px;
+  right: 1rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, rgba(110, 231, 183, 0.15), rgba(251, 191, 36, 0.1));
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  z-index: 15;
+}
+
+.inventory-toggle-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(110, 231, 183, 0.3);
+}
+
+.gem-counter {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(59, 130, 246, 0.15);
+  border: 2px solid #3b82f6;
+  border-radius: 12px;
+  z-index: 20;
+  font-weight: 600;
+  color: #fbbf24;
+  font-size: 1.1rem;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+  animation: gemGlow 2s ease-in-out infinite;
+}
+
+.gem-icon {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.gem-count {
+  min-width: 40px;
+  text-align: center;
+}
+
+@keyframes gemGlow {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(59, 130, 246, 0.6);
+  }
+}
+
+.inventory-modal {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 600px;
+  width: 90vw;
+  background: rgba(22, 16, 31, 0.95);
+  border: 2px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 1.2rem;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.inventory-modal.hidden {
+  display: none;
+}
+
+.inventory-modal h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.inventory {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.slot {
+  min-width: 72px;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  column-gap: 0.35rem;
+  row-gap: 0.15rem;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  background: #2a203a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.slot * {
+  pointer-events: none;
+}
+
+.slot:hover {
+  border-color: #7e62a6;
+  background: #3a2f4a;
+}
+
+.slot.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.slot-key {
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.slot-icon {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.slot-label {
+  grid-column: 1 / span 2;
+  font-size: 0.72rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.slot-rarity {
+  grid-column: 1 / span 2;
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--accent-2);
+  font-weight: 600;
+  margin-top: 0.1rem;
+}
+
+@media (max-width: 900px) {
+  .menu-modal,
+  .settings-modal {
+    right: 0.4rem;
+    top: 2.4rem;
+  }
+
+  .auth-message {
+    font-size: 0.68rem;
+  }
+
+  .slot {
+    min-width: 64px;
+    font-size: 0.7rem;
+  }
+
+  .slot-icon {
+    width: 16px;
+    height: 16px;
+  }
+}
