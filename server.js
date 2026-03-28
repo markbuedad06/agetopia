@@ -152,6 +152,16 @@ async function ensureSchema() {
   )`);
 }
 
+function formatDateForMySQL(date = new Date()) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 function buildPoolFromUrl() {
   const url = new URL(MYSQL_URL);
   const sslParam = url.searchParams.get("ssl");
@@ -199,7 +209,7 @@ function makeUsersRepo() {
       return undefined;
     },
     insert: async (doc) => {
-      const createdAt = doc.createdAt || new Date().toISOString();
+      const createdAt = doc.createdAt || formatDateForMySQL();
       const [result] = await pool.query(
         "INSERT INTO users (username, passwordHash, createdAt) VALUES (?, ?, ?)",
         [doc.username, doc.passwordHash, createdAt]
@@ -221,7 +231,7 @@ function makeWorldRepo() {
       if (!key) return;
       await pool.query(
         "INSERT INTO world_blocks (`key`, worldName, x, y, tile, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), tile=VALUES(tile), updatedAt=VALUES(updatedAt)",
-        [key, doc.worldName, doc.x, doc.y, doc.tile, doc.updatedAt || new Date().toISOString()]
+        [key, doc.worldName, doc.x, doc.y, doc.tile, doc.updatedAt || formatDateForMySQL()]
       );
     },
     remove: async (filter) => {
@@ -283,7 +293,7 @@ function makeGrowingPlantsRepo() {
         totalTime: doc.totalTime,
         plantedAt: doc.plantedAt,
         fullGrown: Boolean(doc.fullGrown),
-        createdAt: doc.createdAt || new Date().toISOString(),
+        createdAt: doc.createdAt || formatDateForMySQL(),
       };
       const sql = upsert
         ? "INSERT INTO growing_plants (`key`, worldName, x, y, sourceBlock, dropCount, totalTime, plantedAt, fullGrown, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), sourceBlock=VALUES(sourceBlock), dropCount=VALUES(dropCount), totalTime=VALUES(totalTime), plantedAt=VALUES(plantedAt), fullGrown=VALUES(fullGrown), createdAt=VALUES(createdAt)"
@@ -322,7 +332,7 @@ function makeInventoriesRepo() {
       if (!key) return;
       const inventoryJson = JSON.stringify(doc.inventory || {});
       const upsert = Boolean(options.upsert);
-      const updatedAt = doc.updatedAt || new Date().toISOString();
+      const updatedAt = doc.updatedAt || formatDateForMySQL();
       const sql = upsert
         ? "INSERT INTO inventories (`key`, userId, inventory, updatedAt) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), inventory=VALUES(inventory), updatedAt=VALUES(updatedAt)"
         : "UPDATE inventories SET userId=?, inventory=?, updatedAt=? WHERE `key`=?";
@@ -684,7 +694,7 @@ wss.on("connection", async (ws, req) => {
       const inv = sanitizeInventory(msg.inventory);
       await inventoriesDB.update(
         { key: inventoryKey(player.userId) },
-        { key: inventoryKey(player.userId), userId: player.userId, inventory: inv, updatedAt: new Date().toISOString() },
+        { key: inventoryKey(player.userId), userId: player.userId, inventory: inv, updatedAt: formatDateForMySQL() },
         { upsert: true }
       );
       return;
@@ -784,7 +794,7 @@ wss.on("connection", async (ws, req) => {
       } else {
         await worldDB.update(
           { key: blockKey(worldName, x, y) },
-          { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: new Date().toISOString() },
+          { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: formatDateForMySQL() },
           { upsert: true }
         );
       }
@@ -812,7 +822,7 @@ wss.on("connection", async (ws, req) => {
           totalTime: msg.totalTime,
           plantedAt: msg.plantedAt,
           fullGrown: false,
-          createdAt: new Date().toISOString()
+          createdAt: formatDateForMySQL()
         },
         { upsert: true }
       );
