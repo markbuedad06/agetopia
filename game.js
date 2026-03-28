@@ -2085,13 +2085,12 @@ const mobileControls = {
 };
 
 function setupMobileControls() {
-  const btnUp = document.getElementById("btnUp");
-  const btnDown = document.getElementById("btnDown");
   const btnLeft = document.getElementById("btnLeft");
   const btnRight = document.getElementById("btnRight");
+  const btnJump = document.getElementById("btnJump");
   const btnFullscreen = document.getElementById("btnFullscreen");
 
-  if (!btnUp) return; // Controls not in DOM
+  if (!btnLeft) return; // Controls not in DOM
 
   const setupButton = (btn, keyCode, mobileKey) => {
     btn.addEventListener("touchstart", (e) => {
@@ -2114,10 +2113,24 @@ function setupMobileControls() {
     });
   };
 
-  setupButton(btnUp, "ArrowUp", "up");
-  setupButton(btnDown, "ArrowDown", "down");
   setupButton(btnLeft, "ArrowLeft", "left");
   setupButton(btnRight, "ArrowRight", "right");
+
+  // Jump button
+  btnJump.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    keys.add("Space");
+  });
+  btnJump.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    keys.delete("Space");
+  });
+  btnJump.addEventListener("mousedown", () => {
+    keys.add("Space");
+  });
+  btnJump.addEventListener("mouseup", () => {
+    keys.delete("Space");
+  });
 
   // Fullscreen button
   btnFullscreen.addEventListener("click", toggleFullscreen);

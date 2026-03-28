@@ -10,6 +10,7 @@
   <div class="game-shell">
     <header class="hud-top">
       <div class="corner-controls">
+        <button id="btnFullscreen" class="action-btn fullscreen" aria-label="Fullscreen">⛶</button>
         <div id="onlineState" class="online-state offline">Offline</div>
         <button id="menuBtn" type="button" class="menu-btn">Menu</button>
       </div>
@@ -39,20 +40,13 @@
 
     <canvas id="game" aria-label="Agetopia game canvas"></canvas>
     
-    <!-- Mobile Touch Controls -->
+    <!-- Mobile Controls -->
     <div id="mobileControls" class="mobile-controls">
-      <button id="btnPunchPlace" class="punch-place-btn punch" aria-label="Punch/Place">👊</button>
-      <div class="movement-pad">
-        <button id="btnUp" class="arrow-btn up" aria-label="Move up">▲</button>
-        <div class="arrow-row">
-          <button id="btnLeft" class="arrow-btn left" aria-label="Move left">◄</button>
-          <button id="btnDown" class="arrow-btn down" aria-label="Move down">▼</button>
-          <button id="btnRight" class="arrow-btn right" aria-label="Move right">►</button>
-        </div>
+      <div class="movement-pad-left">
+        <button id="btnLeft" class="arrow-btn left" aria-label="Move left">◄</button>
+        <button id="btnRight" class="arrow-btn right" aria-label="Move right">►</button>
       </div>
-      <div class="mobile-action-buttons">
-        <button id="btnFullscreen" class="action-btn fullscreen" aria-label="Fullscreen">⛶</button>
-      </div>
+      <button id="btnJump" class="action-btn jump" aria-label="Jump">⬆</button>
     </div>
     
     <!-- Bottom Inventory Bar -->
