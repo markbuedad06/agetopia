@@ -657,4 +657,34 @@ body {
   .arrow-row {
     gap: 3px;
   }
+
+  .inventory-modal {
+    width: 95vw;
+    max-width: none;
+    padding: 0.6rem;
+  }
+
+  .inventory-modal h3 {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .inventory {
+    gap: 0.2rem;
+  }
+
+  .slot {
+    min-width: 48px;
+    padding: 0.2rem 0.25rem;
+    font-size: 0.65rem;
+  }
+
+  .slot-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .slot-key {
+    font-size: 0.6rem;
+  }
 }

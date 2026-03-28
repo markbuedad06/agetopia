@@ -1970,6 +1970,35 @@ window.addEventListener("mouseup", (e) => {
   if (e.button === 0) leftDown = false;
 });
 
+// Mobile touch punching/breaking blocks
+canvas.addEventListener("touchmove", (e) => {
+  if (!gameplayUnlocked) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  if (!touch) return;
+  const rect = canvas.getBoundingClientRect();
+  mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
+  mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
+});
+
+canvas.addEventListener("touchstart", (e) => {
+  if (!gameplayUnlocked) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  if (!touch) return;
+  const rect = canvas.getBoundingClientRect();
+  mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
+  mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
+  leftDown = true;
+  tryPunchPlayer(currentNow);
+});
+
+canvas.addEventListener("touchend", (e) => {
+  if (!gameplayUnlocked) return;
+  e.preventDefault();
+  leftDown = false;
+});
+
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
 // Mobile touch controls
