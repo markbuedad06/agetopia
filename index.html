@@ -55,18 +55,25 @@
       </div>
     </div>
     
-    <button id="inventoryBtn" type="button" class="inventory-toggle-btn">Inventory</button>
-    <div id="gemCounter" class="gem-counter">
-      <img src="assets/items/gem.svg" alt="Gem" class="gem-icon">
-      <span id="gemCount" class="gem-count">0</span>
+    <!-- Bottom Inventory Bar -->
+    <div class="inventory-bar">
+      <button id="inventoryExpandBtn" class="inventory-expand-btn" aria-label="Open full inventory">⋮⋮</button>
+      <div class="quick-inventory">
+        <button id="btnPunch" class="punch-slot" aria-label="Punch">👊</button>
+        <div id="quickSlots" class="quick-slots"></div>
+      </div>
+      <div id="gemCounter" class="gem-counter">
+        <img src="assets/items/gem.svg" alt="Gem" class="gem-icon">
+        <span id="gemCount" class="gem-count">0</span>
+      </div>
     </div>
     
     <footer class="hud-bottom">
       <div id="status">Loading...</div>
     </footer>
 
-    <div id="inventoryModal" class="inventory-modal hidden" role="dialog" aria-label="Inventory">
-      <h3>Inventory</h3>
+    <div id="inventoryModal" class="inventory-modal hidden" role="dialog" aria-label="Full Inventory">
+      <h3>Full Inventory</h3>
       <div id="inventory" class="inventory"></div>
       <button id="inventoryCloseBtn" type="button" class="menu-item">Close</button>
     </div>

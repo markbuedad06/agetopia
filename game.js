@@ -2,7 +2,9 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const statusEl = document.getElementById("status");
 const inventoryEl = document.getElementById("inventory");
-const inventoryBtn = document.getElementById("inventoryBtn");
+const quickSlotsEl = document.getElementById("quickSlots");
+const btnPunch = document.getElementById("btnPunch");
+const inventoryExpandBtn = document.getElementById("inventoryExpandBtn");
 const inventoryModal = document.getElementById("inventoryModal");
 const inventoryCloseBtn = document.getElementById("inventoryCloseBtn");
 const gemCountEl = document.getElementById("gemCount");
@@ -243,7 +245,6 @@ const keys = new Set();
 let mouseX = 0;
 let mouseY = 0;
 let leftDown = false;
-let rightDown = false;
 let suppressBreakUntil = 0;
 let currentNow = performance.now();
 let digitCombo = "";
@@ -520,7 +521,14 @@ function setupMenuInteractions() {
     }
   });
 
-  inventoryBtn?.addEventListener("click", () => {
+  // Punch button click
+  btnPunch?.addEventListener("click", () => {
+    selectedSlot = -1; // -1 means punch mode
+    updateHUD();
+  });
+
+  // Expand inventory button
+  inventoryExpandBtn?.addEventListener("click", () => {
     inventoryModal?.classList.remove("hidden");
     menuModal?.classList.add("hidden");
     settingsModal?.classList.add("hidden");
@@ -532,7 +540,22 @@ function setupMenuInteractions() {
     saveInventoryState();
   });
 
-  // Event delegation for inventory slot clicks
+  // Event delegation for quick slot clicks
+  if (quickSlotsEl) {
+    quickSlotsEl.addEventListener("mousedown", (event) => {
+      event.stopPropagation();
+      const slot = event.target.closest(".quick-slot");
+      if (!slot) return;
+      
+      const slotIndex = Number(slot.getAttribute("data-slot-index"));
+      if (isNaN(slotIndex) || slotIndex < 0 || slotIndex >= 5) return;
+      
+      selectedSlot = slotIndex;
+      updateHUD();
+    });
+  }
+
+  // Event delegation for full inventory slot clicks
   if (inventoryEl) {
     inventoryEl.addEventListener("mousedown", (event) => {
       event.stopPropagation();  // Prevent document mousedown from firing
@@ -971,9 +994,11 @@ function calculateBlockDrop(tileType) {
 }
 
 function tryPlace() {
-  if (!rightDown) return;
+  if (!leftDown) return;
 
-  rightDown = false;
+  const isPunchSelected = selectedSlot === -1; // -1 means punch button selected
+  if (isPunchSelected) return; // Don't place if punch is selected
+
   const { tx, ty } = screenToWorldTile(mouseX, mouseY);
   if (!inBounds(tx, ty) || !canReach(tx, ty)) return;
   if (getTile(tx, ty) !== 0) return;
@@ -1249,17 +1274,23 @@ function drawReachRing() {
 function updateHUD() {
   const x = Math.floor((player.x + player.w * 0.5) / TILE);
   const y = Math.floor((player.y + player.h * 0.5) / TILE);
-  const selectedTile = hotbarOrder[selectedSlot];
   const remoteCount = remotePlayers.size;
   const modeLabel = ONLINE_MODE ? (networkState.connected ? "Online" : "Online (disconnected)") : "Singleplayer";
-  const selectedCount = inventory[selectedTile] || 0;
   
   const tileUnder = getTile(x, Math.floor((player.y + player.h) / TILE));
   const hint = tileUnder === 7 ? " [Press E to exit]" : "";
   
-  // Get selected item name from itemDefs (handles both blocks and gems)
-  const selectedItemDef = itemDefs[selectedTile] || tileDefs[selectedTile];
-  const selectedName = selectedItemDef ? selectedItemDef.name : "Unknown";
+  // Show punch or selected item
+  let selectedName, selectedCount;
+  if (selectedSlot === -1) {
+    selectedName = "Punch";
+    selectedCount = "∞";
+  } else {
+    const selectedTile = hotbarOrder[selectedSlot];
+    const selectedItemDef = itemDefs[selectedTile] || tileDefs[selectedTile];
+    selectedName = selectedItemDef ? selectedItemDef.name : "Unknown";
+    selectedCount = inventory[selectedTile] || 0;
+  }
   
   statusEl.textContent = `World:${WORLD_NAME} | X:${x} Y:${y} | HP:${Math.floor(player.health)}/${player.maxHealth} | Selected:${selectedName} x${selectedCount} | ${modeLabel} | Players:${remoteCount + 1}${hint}`;
 
@@ -1269,7 +1300,66 @@ function updateHUD() {
     gemCountEl.textContent = gemCount;
   }
 
+  // Update punch button styling
+  if (btnPunch) {
+    if (selectedSlot === -1) {
+      btnPunch.classList.add("selected");
+    } else {
+      btnPunch.classList.remove("selected");
+    }
+  }
+
+  // Render quick slots (5 slots from hotbar)
+  renderQuickSlots();
+
+  // Render full inventory for modal
+  renderFullInventory();
+}
+
+function renderQuickSlots() {
+  if (!quickSlotsEl) return;
+  quickSlotsEl.innerHTML = "";
+
+  // Show first 5 slots
+  for (let i = 0; i < 5; i++) {
+    const tile = hotbarOrder[i];
+    const count = inventory[tile] || 0;
+
+    const item = itemDefs[tile];
+    const slot = document.createElement("div");
+    slot.className = `quick-slot ${i === selectedSlot ? "selected" : ""}`;
+    slot.setAttribute("data-slot-index", String(i));
+    slot.setAttribute("data-tile", String(tile));
+
+    if (count > 0) {
+      const icon = document.createElement("img");
+      icon.className = "slot-icon";
+      icon.src = item.icon;
+      icon.alt = item.name;
+      icon.loading = "lazy";
+
+      const key = document.createElement("span");
+      key.className = "quick-slot-key";
+      key.textContent = String(i + 1);
+
+      const label = document.createElement("span");
+      label.textContent = `x${count}`;
+      label.style.fontSize = "0.6rem";
+
+      slot.appendChild(key);
+      slot.appendChild(icon);
+      slot.appendChild(label);
+    }
+
+    quickSlotsEl.appendChild(slot);
+  }
+}
+
+function renderFullInventory() {
+  if (!inventoryEl) return;
   inventoryEl.innerHTML = "";
+
+  // Render hotbar items
   hotbarOrder.forEach((tile, idx) => {
     const count = inventory[tile] || 0;
     if (count === 0) return;
@@ -1959,10 +2049,13 @@ canvas.addEventListener("mousemove", (e) => {
 canvas.addEventListener("mousedown", (e) => {
   if (!gameplayUnlocked) return;
   if (e.button === 0) {
+    // Left click: place blocks (or punch if punch is selected)
     leftDown = true;
-    tryPunchPlayer(currentNow);
+    const isPunchSelected = selectedSlot === -1; // -1 means punch button selected
+    if (isPunchSelected) {
+      tryPunchPlayer(currentNow);
+    }
   }
-  if (e.button === 2) rightDown = true;
 });
 
 window.addEventListener("mouseup", (e) => {
@@ -1996,7 +2089,6 @@ function setupMobileControls() {
   const btnDown = document.getElementById("btnDown");
   const btnLeft = document.getElementById("btnLeft");
   const btnRight = document.getElementById("btnRight");
-  const btnPunchPlace = document.getElementById("btnPunchPlace");
   const btnFullscreen = document.getElementById("btnFullscreen");
 
   if (!btnUp) return; // Controls not in DOM
@@ -2026,45 +2118,6 @@ function setupMobileControls() {
   setupButton(btnDown, "ArrowDown", "down");
   setupButton(btnLeft, "ArrowLeft", "left");
   setupButton(btnRight, "ArrowRight", "right");
-
-  // Punch/Place toggle button
-  let placingMode = false;
-  btnPunchPlace.addEventListener("click", () => {
-    placingMode = !placingMode;
-    if (placingMode) {
-      btnPunchPlace.classList.add("place");
-      btnPunchPlace.textContent = "📦";
-    } else {
-      btnPunchPlace.classList.remove("place");
-      btnPunchPlace.textContent = "👊";
-    }
-  });
-
-  // Override canvas touch events to use punch/place mode
-  const canvasTouchStart = (e) => {
-    if (!gameplayUnlocked || e.touches.length === 0) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
-    mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
-    if (placingMode) {
-      rightDown = true;
-    } else {
-      leftDown = true;
-      tryPunchPlayer(currentNow);
-    }
-  };
-
-  const canvasTouchEnd = (e) => {
-    if (!gameplayUnlocked) return;
-    e.preventDefault();
-    leftDown = false;
-    rightDown = false;
-  };
-
-  canvas.addEventListener("touchstart", canvasTouchStart);
-  canvas.addEventListener("touchend", canvasTouchEnd);
 
   // Fullscreen button
   btnFullscreen.addEventListener("click", toggleFullscreen);

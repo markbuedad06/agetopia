@@ -297,81 +297,177 @@ body {
   flex-wrap: wrap;
 }
 
-.inventory-toggle-btn {
-  position: absolute;
-  bottom: 80px;
-  right: 1rem;
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, rgba(110, 231, 183, 0.15), rgba(251, 191, 36, 0.1));
-  border: 1px solid var(--panel-border);
-  color: var(--text);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  z-index: 15;
+/* Inventory Bar at Bottom */
+.inventory-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(to top, rgba(22, 16, 31, 0.98), rgba(22, 16, 31, 0.9));
+  border-top: 2px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  z-index: 25;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
 }
 
-.inventory-toggle-btn:hover {
+.inventory-expand-btn {
+  padding: 6px 10px;
+  background: rgba(110, 231, 183, 0.1);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  height: 64px;
+}
+
+.inventory-expand-btn:hover {
+  background: rgba(110, 231, 183, 0.2);
+  box-shadow: 0 0 8px rgba(110, 231, 183, 0.4);
+}
+
+.quick-inventory {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex: 1;
+}
+
+.punch-slot {
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(110, 231, 183, 0.1);
+  color: var(--accent);
+  font-size: 1.4rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  flex-shrink: 0;
+}
+
+.punch-slot:active,
+.punch-slot.selected {
+  background: rgba(110, 231, 183, 0.3);
+  transform: scale(0.95);
+}
+
+.punch-slot:hover {
+  box-shadow: 0 0 12px rgba(110, 231, 183, 0.5);
+}
+
+.quick-slots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex: 1;
+}
+
+.quick-slot {
+  min-width: 64px;
+  height: 64px;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  column-gap: 0.35rem;
+  row-gap: 0.15rem;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  background: #2a203a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  flex-shrink: 0;
+}
+
+.quick-slot * {
+  pointer-events: none;
+}
+
+.quick-slot:hover {
+  border-color: #7e62a6;
+  background: #3a2f4a;
+}
+
+.quick-slot.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 8px rgba(110, 231, 183, 0.3);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  background: rgba(110, 231, 183, 0.1);
+}
+
+.quick-slot-key {
+  font-weight: 700;
+  opacity: 0.95;
 }
 
 .gem-counter {
-  position: fixed;
-  top: 80px;
-  right: 20px;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.8rem;
   background: rgba(59, 130, 246, 0.15);
   border: 2px solid #3b82f6;
-  border-radius: 12px;
+  border-radius: 8px;
   z-index: 20;
   font-weight: 600;
   color: #fbbf24;
-  font-size: 1.1rem;
-  box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+  font-size: 0.9rem;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
   animation: gemGlow 2s ease-in-out infinite;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .gem-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
 
 .gem-count {
-  min-width: 40px;
+  min-width: 30px;
   text-align: center;
 }
 
 @keyframes gemGlow {
   0%, 100% {
-    box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
   }
   50% {
-    box-shadow: 0 0 24px rgba(59, 130, 246, 0.6);
+    box-shadow: 0 0 18px rgba(59, 130, 246, 0.6);
   }
 }
 
 .inventory-modal {
   position: fixed;
-  bottom: 10px;
+  bottom: 90px;
   left: 50%;
   transform: translateX(-50%);
   max-width: 600px;
   width: 90vw;
-  background: rgba(22, 16, 31, 0.95);
+  max-height: 60vh;
+  background: rgba(22, 16, 31, 0.98);
   border: 2px solid var(--panel-border);
   border-radius: 12px;
-  padding: 1.2rem;
+  padding: 1rem;
   z-index: 100;
   backdrop-filter: blur(8px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  overflow-y: auto;
 }
 
 .inventory-modal.hidden {
@@ -602,18 +698,28 @@ body {
     font-size: 1.3rem;
   }
 
-  /* Adjust layout for mobile */
-  .inventory-toggle-btn {
-    bottom: 190px;
-    right: 0.5rem;
-    padding: 0.4rem 0.8rem;
-    font-size: 0.8rem;
+  /* Inventory bar adjustments */
+  .inventory-bar {
+    height: 80px;
+    padding: 8px;
+  }
+
+  .inventory-expand-btn {
+    min-width: 40px;
+    height: 64px;
+  }
+
+  .punch-slot {
+    width: 64px;
+    height: 64px;
+  }
+
+  .quick-slot {
+    min-width: 64px;
+    height: 64px;
   }
 
   .gem-counter {
-    top: auto;
-    bottom: 280px;
-    right: 20px;
     padding: 0.5rem 0.8rem;
     font-size: 0.9rem;
   }
@@ -621,6 +727,10 @@ body {
   .gem-icon {
     width: 20px;
     height: 20px;
+  }
+
+  .inventory-modal {
+    bottom: 90px;
   }
 
   .hud-top {
@@ -695,15 +805,38 @@ body {
     font-size: 1.1rem;
   }
 
-  .inventory-toggle-btn {
-    bottom: 160px;
+  .inventory-bar {
+    height: 72px;
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .inventory-expand-btn {
+    min-width: 36px;
+    height: 60px;
+    font-size: 0.9rem;
+  }
+
+  .punch-slot {
+    width: 56px;
+    height: 56px;
+    font-size: 1.2rem;
+  }
+
+  .quick-slot {
+    min-width: 56px;
+    height: 56px;
+    font-size: 0.6rem;
   }
 
   .gem-counter {
-    bottom: 240px;
-    right: 15px;
-    font-size: 0.85rem;
-    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .gem-icon {
+    width: 16px;
+    height: 16px;
   }
 
   .movement-pad {
@@ -715,9 +848,11 @@ body {
   }
 
   .inventory-modal {
+    bottom: 82px;
     width: 95vw;
     max-width: none;
     padding: 0.6rem;
+    max-height: 50vh;
   }
 
   .inventory-modal h3 {
