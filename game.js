@@ -1039,6 +1039,8 @@ function tryPlace() {
       plantedAt: plantedAt
     });
     setTile(tx, ty, 0);
+    // Suppress breaking for 500ms after planting to prevent instant destruction
+    suppressBreakUntil = currentNow + 500;
     // Send plant info to server
     sendSocket({ 
       type: "plant_seed", 
@@ -1054,6 +1056,8 @@ function tryPlace() {
   } else {
     // Place block normally
     setTile(tx, ty, selectedItem);
+    // Suppress breaking for 300ms after placing
+    suppressBreakUntil = currentNow + 300;
     sendSocket({ type: "block_update", x: tx, y: ty, tile: selectedItem });
   }
 }
@@ -2130,6 +2134,36 @@ function setupMobileControls() {
   });
   btnJump.addEventListener("mouseup", () => {
     keys.delete("Space");
+  });
+
+  // Canvas touch handlers for punching/placing
+  canvas.addEventListener("touchstart", (e) => {
+    if (!gameplayUnlocked || e.touches.length === 0) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
+    mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
+    leftDown = true;
+    const isPunchSelected = selectedSlot === -1;
+    if (isPunchSelected) {
+      tryPunchPlayer(currentNow);
+    }
+  });
+
+  canvas.addEventListener("touchend", (e) => {
+    if (!gameplayUnlocked) return;
+    e.preventDefault();
+    leftDown = false;
+  });
+
+  canvas.addEventListener("touchmove", (e) => {
+    if (!gameplayUnlocked || e.touches.length === 0) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
+    mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
   });
 
   // Fullscreen button
