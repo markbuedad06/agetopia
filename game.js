@@ -84,6 +84,7 @@ const itemDefs = {
   8: { name: "Gem", icon: "assets/items/gem.svg", color: "#3b82f6", rarity: 3 },
   15: { name: "Land Lock", icon: "assets/items/land-lock.svg", color: "#FFD700", rarity: 1 },
    16: { name: "Lava", icon: "assets/items/lava-block.svg", color: "#e25822", rarity: 1 },
+   17: { name: "Lava Seed", icon: "assets/items/lava-seed.svg", color: "#e25822", rarity: 1 },
   9: { name: "Grass Seed", icon: "assets/items/grass-seed.svg", color: "#62c462", rarity: 1 },
   10: { name: "Dirt Seed", icon: "assets/items/dirt-seed.svg", color: "#8f5f3d", rarity: 1 },
   11: { name: "Stone Seed", icon: "assets/items/stone-seed.svg", color: "#8d98a2", rarity: 1 },
@@ -98,7 +99,7 @@ for (const [id, def] of Object.entries(itemDefs)) {
   ITEM_NAME_TO_ID[def.name] = Number(id);
 }
 
-const hotbarOrder = [1, 2, 3, 4, 5, 6, 16, 9, 10, 11, 12, 13, 14, 15];
+const hotbarOrder = [1, 2, 3, 4, 5, 6, 16, 9, 10, 11, 12, 13, 14, 15, 17];
 
 // Simple inventory state
 const inventory = {
@@ -117,6 +118,7 @@ const inventory = {
   14: 0,
   15: 0,
   16: 0,
+  17: 0,
 };
 
 let selectedSlot = 0;
@@ -427,7 +429,7 @@ function saveInventoryItems() {
     if (ONLINE_MODE && networkState.connected) {
       // Send inventory to server so it persists across devices
       const payload = {};
-      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
       validKeys.forEach((k) => { payload[k] = Math.max(0, Math.min(INVENTORY_STACK_LIMIT, inventory[k] || 0)); });
       sendSocket({ type: "inventory_update", inventory: payload });
     }
@@ -467,6 +469,7 @@ function loadInventoryItems() {
         }
         inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 0);
         inventory[16] = Math.min(INVENTORY_STACK_LIMIT, loaded[16] || 0);
+        inventory[17] = Math.min(INVENTORY_STACK_LIMIT, loaded[17] || 0);
       }
     }
   } catch (err) {
@@ -474,7 +477,7 @@ function loadInventoryItems() {
   }
   
   // Remove ALL keys that aren't in the valid list
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
   for (const key in inventory) {
     const numKey = parseInt(key);
     if (!validKeys.includes(numKey)) {
@@ -494,7 +497,7 @@ function applyInventoryFromServer(serverInv) {
   }
   
   // Clear current inventory
-  const validIds = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const validIds = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
   validIds.forEach((k) => { inventory[k] = 0; });
   
   // Apply server inventory (handle both ID-based legacy and name-based formats)
@@ -1197,7 +1200,12 @@ function tryBreak(dt) {
 function calculateBlockDrop(tileType) {
   const def = tileDefs[tileType];
   if (!def) return null;
-  if (tileType === LAVA_TILE) return LAVA_TILE;
+  if (tileType === LAVA_TILE) {
+    const roll = Math.random();
+    if (roll < 0.3) return null; // nothing
+    if (roll < 0.65) return 17;  // lava seed
+    return LAVA_TILE;           // lava block
+  }
   const rarity = def.rarity || 1;
   const hardness = def.hardness || 0.5;
   
@@ -2209,9 +2217,10 @@ function resetInventoryState() {
   inventory[14] = 0;
   inventory[15] = 0;
   inventory[16] = 0;
+  inventory[17] = 0;
   
   // Remove any stray keys
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
   for (const key in inventory) {
     if (!validKeys.includes(parseInt(key))) {
       delete inventory[key];
@@ -2351,7 +2360,7 @@ function pickupDrop(drop) {
   inventory[itemId] = Math.min(INVENTORY_STACK_LIMIT, inventory[itemId] + 1);
   
   // For seeds and blocks, move them to quick slots (first 5) if they're not already there
-  const isSeed = itemId >= 9 && itemId <= 14;
+  const isSeed = (itemId >= 9 && itemId <= 14) || itemId === 17;
   const isBlock = (itemId >= 1 && itemId <= 7) || itemId === 15 || itemId === 16;
   
   if (isSeed || isBlock) {
@@ -2440,13 +2449,9 @@ function handleLavaDamage(now) {
   if (ONLINE_MODE && networkState.connected) return; // Server is authoritative in online mode
 
   const bounds = getPlayerTileBounds();
-  const scanLeft = Math.max(0, bounds.left - 1);
-  const scanRight = Math.min(WORLD_WIDTH - 1, bounds.right + 1);
-  const scanTop = Math.max(0, bounds.top - 1);
-  const scanBottom = Math.min(WORLD_HEIGHT - 1, bounds.bottom + 1);
   let lavaHit = null;
-  for (let ty = scanTop; ty <= scanBottom; ty += 1) {
-    for (let tx = scanLeft; tx <= scanRight; tx += 1) {
+  for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
+    for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
       if (getTile(tx, ty) === LAVA_TILE) {
         lavaHit = { tx, ty };
         break;

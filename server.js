@@ -71,7 +71,7 @@ const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 const lockedAreasCache = new Map(); // worldName -> Array of locked areas
 const worldOwnersCache = new Map(); // worldName -> userId of owner
 
-const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
 // Item ID to name mapping
 const ITEM_ID_TO_NAME = {
@@ -84,6 +84,7 @@ const ITEM_ID_TO_NAME = {
   8: "Gem",
   15: "Land Lock",
   16: "Lava",
+  17: "Lava Seed",
   9: "Grass Seed",
   10: "Dirt Seed",
   11: "Stone Seed",
@@ -1127,15 +1128,9 @@ wss.on("connection", async (ws, req) => {
     const bounds = getPlayerTileBounds(p);
     const worldArr = getOrCreateWorldArray(worldName);
 
-    // Expand bounds by 1 to catch corner/edge proximity
-    const scanLeft = Math.max(0, bounds.left - 1);
-    const scanRight = Math.min(WORLD_WIDTH - 1, bounds.right + 1);
-    const scanTop = Math.max(0, bounds.top - 1);
-    const scanBottom = Math.min(WORLD_HEIGHT - 1, bounds.bottom + 1);
-
     let lavaHit = null;
-    for (let ty = scanTop; ty <= scanBottom; ty += 1) {
-      for (let tx = scanLeft; tx <= scanRight; tx += 1) {
+    for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
+      for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
         if (worldArr[indexOf(tx, ty)] === LAVA_TILE) {
           lavaHit = { tx, ty };
           break;
