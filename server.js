@@ -942,11 +942,22 @@ wss.on("connection", async (ws, req) => {
     fullGrown: p.fullGrown
   }));
 
+  // Get world owner if exists
+  const worldOwnerId = await getWorldOwner(worldName);
+  let ownerInfo = null;
+  if (worldOwnerId) {
+    const ownerUser = await usersDB.findOne({ id: worldOwnerId });
+    if (ownerUser) {
+      ownerInfo = { userId: worldOwnerId, username: ownerUser.username };
+    }
+  }
+
   ws.send(JSON.stringify({
     type: "init",
     id: player.id,
     username: player.username,
     worldName,
+    worldOwner: ownerInfo,
     player: { x: player.x, y: player.y, health: player.health, maxHealth: player.maxHealth },
     players: others,
     world: Array.from(world),
@@ -1141,6 +1152,13 @@ wss.on("connection", async (ws, req) => {
           }
           // Create a lock around this land_lock
           await createLock(worldName, x, y, player.userId);
+          
+          // Broadcast world owner info to all players in world
+          broadcast({ 
+            type: "world_owner_set", 
+            userId: player.userId,
+            username: player.username
+          }, null, worldName);
         } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
           // Removing land_lock - remove the lock
           await removeLock(worldName, x, y);

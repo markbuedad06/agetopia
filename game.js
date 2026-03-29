@@ -1617,6 +1617,14 @@ function connectSocket(token) {
       try {
         localStorage.setItem(LAST_USERNAME_KEY, msg.username);
       } catch {}
+      
+      // Set world owner if it exists
+      if (msg.worldOwner && msg.worldOwner.userId) {
+        worldOwner = {
+          userId: msg.worldOwner.userId
+        };
+      }
+      
       unlockGameplay();
       if (msg.inventory) {
         applyInventoryFromServer(msg.inventory);
@@ -1829,8 +1837,22 @@ function connectSocket(token) {
       return;
     }
 
+    if (msg.type === "world_owner_set") {
+      // World has been claimed by a player
+      worldOwner = {
+        userId: msg.userId,
+        username: msg.username
+      };
+      if (msg.userId === networkState.userId) {
+        setAuthMessage(`You claimed the world!`);
+      } else {
+        setAuthMessage(`${msg.username} claimed the world!`);
+      }
+      return;
+    }
+
     if (msg.type === "error") {
-      setAuthMessage(msg.error || "Server error");
+      setAuthMessage(msg.message || msg.error || "Server error");
     }
   });
 
