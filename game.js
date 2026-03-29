@@ -100,10 +100,8 @@ const inventory = {
 };
 
 let selectedSlot = 0;
-let isPunchMode = false; // Track if punch is selected mode
-let lastHUDState = null; // Track HUD state to avoid unnecessary updates
-let lastInventoryState = null; // Track inventory state
-let lastHUDUpdateTime = 0;
+
+const world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
 const remotePlayers = new Map();
 const drops = new Map();
 const growingPlants = new Map(); // Track growing seeds: "x:y" -> { progress, totalTime }
@@ -248,7 +246,6 @@ let mouseX = 0;
 let mouseY = 0;
 let leftDown = false;
 let suppressBreakUntil = 0;
-let lastSeedPlantTime = 0;
 let currentNow = performance.now();
 let digitCombo = "";
 let digitComboExpiresAt = 0;
@@ -524,9 +521,9 @@ function setupMenuInteractions() {
     }
   });
 
-  // Punch button click - select punch mode (like any other item)
+  // Punch button click
   btnPunch?.addEventListener("click", () => {
-    isPunchMode = !isPunchMode; // Toggle punch mode on/off
+    selectedSlot = -1; // -1 means punch mode
     updateHUD();
   });
 
@@ -554,7 +551,6 @@ function setupMenuInteractions() {
       if (isNaN(slotIndex) || slotIndex < 0 || slotIndex >= 5) return;
       
       selectedSlot = slotIndex;
-      isPunchMode = false; // Deselect punch when selecting an item
       updateHUD();
     });
   }
@@ -570,7 +566,6 @@ function setupMenuInteractions() {
       if (isNaN(slotIndex) || slotIndex < 0 || slotIndex >= hotbarOrder.length) return;
       
       selectedSlot = slotIndex;
-      isPunchMode = false; // Deselect punch when selecting an item
       updateHUD();
     });
   }
@@ -1001,7 +996,8 @@ function calculateBlockDrop(tileType) {
 function tryPlace() {
   if (!leftDown) return;
 
-  if (isPunchMode) return; // Don't place if punch is selected
+  const isPunchSelected = selectedSlot === -1; // -1 means punch button selected
+  if (isPunchSelected) return; // Don't place if punch is selected
 
   const { tx, ty } = screenToWorldTile(mouseX, mouseY);
   if (!inBounds(tx, ty) || !canReach(tx, ty)) return;
@@ -1026,9 +1022,6 @@ function tryPlace() {
   
   // Handle seed planting vs block placement
   if (isSeedItem(selectedItem)) {
-    // Check seed planting cooldown (0.4s between plants to prevent overlapping)
-    if (currentNow < lastSeedPlantTime + 400) return;
-    
     // Plant seed - keep tile empty (0) and track in growingPlants map
     const rarity = getItemRarity(selectedItem);
     const growthTime = getGrowthTimeSeconds(rarity);
@@ -1046,8 +1039,7 @@ function tryPlace() {
       plantedAt: plantedAt
     });
     setTile(tx, ty, 0);
-    // Update seed plant cooldown and suppress breaking
-    lastSeedPlantTime = currentNow;
+    // Suppress breaking for 500ms after planting to prevent instant destruction
     suppressBreakUntil = currentNow + 500;
     // Send plant info to server
     sendSocket({ 
@@ -1294,7 +1286,7 @@ function updateHUD() {
   
   // Show punch or selected item
   let selectedName, selectedCount;
-  if (isPunchMode) {
+  if (selectedSlot === -1) {
     selectedName = "Punch";
     selectedCount = "∞";
   } else {
@@ -1314,7 +1306,7 @@ function updateHUD() {
 
   // Update punch button styling
   if (btnPunch) {
-    if (isPunchMode) {
+    if (selectedSlot === -1) {
       btnPunch.classList.add("selected");
     } else {
       btnPunch.classList.remove("selected");
@@ -2033,7 +2025,6 @@ window.addEventListener("keydown", (e) => {
     const idx = Number(e.code.slice(-1)) - 1;
     if (idx >= 0 && idx < hotbarOrder.length) {
       selectedSlot = idx;
-      isPunchMode = false; // Deselect punch when selecting an item
     }
 
     const digitValue = Number(e.code.slice(-1));
@@ -2064,7 +2055,8 @@ canvas.addEventListener("mousedown", (e) => {
   if (e.button === 0) {
     // Left click: place blocks (or punch if punch is selected)
     leftDown = true;
-    if (isPunchMode) {
+    const isPunchSelected = selectedSlot === -1; // -1 means punch button selected
+    if (isPunchSelected) {
       tryPunchPlayer(currentNow);
     }
   }
@@ -2153,7 +2145,8 @@ function setupMobileControls() {
     mouseX = ((touch.clientX - rect.left) / rect.width) * canvas.width;
     mouseY = ((touch.clientY - rect.top) / rect.height) * canvas.height;
     leftDown = true;
-    if (isPunchMode) {
+    const isPunchSelected = selectedSlot === -1;
+    if (isPunchSelected) {
       tryPunchPlayer(currentNow);
     }
   });
