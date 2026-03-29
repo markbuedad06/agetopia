@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <defs>
+    <linearGradient id="lavaFill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff9a3c" />
+      <stop offset="55%" stop-color="#f15a24" />
+      <stop offset="100%" stop-color="#c92a2a" />
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="30" height="30" rx="3" fill="url(#lavaFill)" stroke="#7a1a1a" stroke-width="2" />
+  <path d="M4 20 q4 -3 8 0 t8 0 t8 0" fill="none" stroke="#ffe9c7" stroke-width="1.6" stroke-linecap="round" opacity="0.7" />
+  <path d="M6 12 q3 -4 6 0 t6 0 t6 0" fill="none" stroke="#ffcf87" stroke-width="1.6" stroke-linecap="round" opacity="0.75" />
+  <path d="M5 25 q4 -2 9 0 t9 0" fill="none" stroke="#8b1c1c" stroke-width="1.4" stroke-linecap="round" opacity="0.7" />
+</svg>

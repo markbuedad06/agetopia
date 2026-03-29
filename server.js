@@ -36,6 +36,10 @@ const KNOCKBACK_PUSH = 420;
 const KNOCKBACK_LIFT = -260;
 const LOCK_RADIUS = 10; // Tiles around a land_lock that are protected
 const LAND_LOCK_TILE = 15;
+const LAVA_TILE = 16;
+const LAVA_DAMAGE = 15;
+const LAVA_COOLDOWN_MS = 900;
+const LAVA_KNOCKBACK = 420;
 
 const app = express();
 const server = http.createServer(app);
@@ -67,7 +71,7 @@ const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 const lockedAreasCache = new Map(); // worldName -> Array of locked areas
 const worldOwnersCache = new Map(); // worldName -> userId of owner
 
-const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
+const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
 // Item ID to name mapping
 const ITEM_ID_TO_NAME = {
@@ -79,6 +83,7 @@ const ITEM_ID_TO_NAME = {
   6: "123 Block",
   8: "Gem",
   15: "Land Lock",
+  16: "Lava",
   9: "Grass Seed",
   10: "Dirt Seed",
   11: "Stone Seed",
@@ -855,6 +860,14 @@ function generateWorld(world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT)) {
   const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
   world[indexOf(doorX, doorBaseY)] = 7;
 
+  // Fill the bottom of the world with lava to create a lethal floor
+  const lavaDepth = 3;
+  for (let y = WORLD_HEIGHT - lavaDepth; y < WORLD_HEIGHT; y += 1) {
+    for (let x = 0; x < WORLD_WIDTH; x += 1) {
+      world[indexOf(x, y)] = LAVA_TILE;
+    }
+  }
+
   return world;
 }
 
@@ -1059,6 +1072,7 @@ wss.on("connection", async (ws, req) => {
     health: MAX_HEALTH,
     maxHealth: MAX_HEALTH,
     lastPunchAt: 0,
+    lastLavaHitAt: 0,
     ws,
   };
 
@@ -1071,6 +1085,117 @@ wss.on("connection", async (ws, req) => {
   if (!worldCache_entry.loaded) {
     await applyPersistedBlocks(worldName, world);
     worldCache_entry.loaded = true;
+  }
+
+  function getPlayerTileBounds(p) {
+    const left = Math.floor(p.x / TILE);
+    const right = Math.floor((p.x + 23) / TILE);
+    const top = Math.floor(p.y / TILE);
+    const bottom = Math.floor((p.y + 31) / TILE);
+    return { left, right, top, bottom };
+  }
+
+  async function respawnPlayer(target) {
+    target.health = MAX_HEALTH;
+    const tDoorX = Math.floor(WORLD_WIDTH / 2);
+    const tDoorBaseY = 46 + Math.floor(pseudoNoise(tDoorX) * 10);
+    target.x = tDoorX * TILE;
+    target.y = (tDoorBaseY - 2) * TILE;
+    target.facing = 1;
+
+    await profilesDB.update(
+      { profileId: profileKey(target.userId, worldName) },
+      { profileId: profileKey(target.userId, worldName), userId: target.userId, worldName, spawnX: target.x, spawnY: target.y },
+      { upsert: true }
+    );
+
+    broadcast({ type: "respawn", id: target.id, x: target.x, y: target.y, health: target.health }, null, worldName);
+    broadcast({ type: "health_update", id: target.id, health: target.health, maxHealth: target.maxHealth }, null, worldName);
+    broadcast({
+      type: "player_move",
+      id: target.id,
+      userId: target.userId,
+      username: target.username,
+      x: target.x,
+      y: target.y,
+      facing: target.facing,
+      health: target.health,
+    }, null, worldName);
+  }
+
+  async function handleLavaContact(p) {
+    const bounds = getPlayerTileBounds(p);
+    const worldArr = getOrCreateWorldArray(worldName);
+
+    let lavaHit = null;
+    for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
+      for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
+        if (!inBounds(tx, ty)) continue;
+        if (worldArr[indexOf(tx, ty)] === LAVA_TILE) {
+          lavaHit = { tx, ty };
+          break;
+        }
+      }
+      if (lavaHit) break;
+    }
+
+    // Also check the tiles directly under the player's feet (standing on lava)
+    if (!lavaHit) {
+      const footY = Math.min(WORLD_HEIGHT - 1, bounds.bottom + 1);
+      for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
+        if (!inBounds(tx, footY)) continue;
+        if (worldArr[indexOf(tx, footY)] === LAVA_TILE) {
+          lavaHit = { tx, ty: footY };
+          break;
+        }
+      }
+    }
+
+    if (!lavaHit) return;
+
+    const now = Date.now();
+    if (p.lastLavaHitAt && now - p.lastLavaHitAt < LAVA_COOLDOWN_MS) return;
+    p.lastLavaHitAt = now;
+
+    const lavaCenterX = lavaHit.tx * TILE + TILE * 0.5;
+    const playerCenterX = p.x + 12;
+    const dir = Math.sign(playerCenterX - lavaCenterX) || (p.facing || 1);
+    const knockVX = LAVA_KNOCKBACK * dir;
+    const knockVY = KNOCKBACK_LIFT;
+    const nudgeX = dir * 22;
+    const nudgeY = -10;
+
+    p.x += nudgeX;
+    p.y += nudgeY;
+    p.facing = dir;
+
+    broadcast({
+      type: "knockback",
+      id: p.id,
+      targetId: p.id,
+      vx: knockVX,
+      vy: knockVY,
+      dx: nudgeX,
+      dy: nudgeY,
+    }, null, worldName);
+
+    broadcast({
+      type: "player_move",
+      id: p.id,
+      userId: p.userId,
+      username: p.username,
+      x: p.x,
+      y: p.y,
+      facing: p.facing,
+      health: p.health,
+    }, null, worldName);
+
+    p.health = Math.max(0, p.health - LAVA_DAMAGE);
+    broadcast({ type: "health_update", id: p.id, health: p.health, maxHealth: p.maxHealth }, null, worldName);
+
+    if (p.health <= 0) {
+      await respawnPlayer(p);
+    }
   }
 
   // Ensure world exists in worlds table (create with default owner if new)
@@ -1193,6 +1318,8 @@ wss.on("connection", async (ws, req) => {
           facing: player.facing,
           health: player.health,
         }, player.id, worldName);
+
+        await handleLavaContact(player);
       } catch (err) {
         console.error("Error in player_move:", err);
         send({ type: "error", message: "Player move failed" });
@@ -1261,31 +1388,7 @@ wss.on("connection", async (ws, req) => {
         broadcast({ type: "health_update", id: target.id, health: target.health, maxHealth: target.maxHealth }, null, worldName);
 
         if (target.health <= 0) {
-          target.health = MAX_HEALTH;
-          const tDoorX = Math.floor(WORLD_WIDTH / 2);
-          const tDoorBaseY = 46 + Math.floor(pseudoNoise(tDoorX) * 10);
-          target.x = tDoorX * TILE;
-          target.y = (tDoorBaseY - 2) * TILE;
-          target.facing = 1;
-
-          await profilesDB.update(
-            { profileId: profileKey(target.userId, worldName) },
-            { profileId: profileKey(target.userId, worldName), userId: target.userId, worldName, spawnX: target.x, spawnY: target.y },
-            { upsert: true }
-          );
-
-          broadcast({ type: "respawn", id: target.id, x: target.x, y: target.y, health: target.health }, null, worldName);
-          broadcast({ type: "health_update", id: target.id, health: target.health, maxHealth: target.maxHealth }, null, worldName);
-          broadcast({
-            type: "player_move",
-            id: target.id,
-            userId: target.userId,
-            username: target.username,
-            x: target.x,
-            y: target.y,
-            facing: target.facing,
-            health: target.health,
-          }, null, worldName);
+          await respawnPlayer(target);
         }
       } catch (err) {
         console.error("Error in punch_player:", err);
@@ -1328,7 +1431,7 @@ wss.on("connection", async (ws, req) => {
         const isDoorTile = (x === doorX && y === doorBaseY);
         if (isDoorTile) return;  // Prevent breaking/placing on door
         
-        if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE)) return;  // Allow tiles 0-6 and land_lock(15)
+        if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE && tile !== LAVA_TILE)) return;  // Allow tiles 0-6, land_lock(15), lava(16)
 
         // Check world ownership - owner can build anywhere, non-owners can't build in owned worlds
         const worldOwner = await getWorldOwner(worldName);

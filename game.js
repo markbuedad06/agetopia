@@ -49,6 +49,10 @@ const KNOCKBACK_PUSH = 360;
 const KNOCKBACK_LIFT = 240;
 const DROP_PICKUP_RANGE = 40;
 const DROP_FLOAT_SPEED = 80;
+const LAVA_DAMAGE = 15;
+const LAVA_COOLDOWN_MS = 900;
+const LAVA_KNOCKBACK = 420;
+const LAVA_TILE = 16;
 
 const tileDefs = {
   0: { name: "Air", color: "rgba(0,0,0,0)", solid: false, hardness: 0, texture: null, rarity: 0 },
@@ -59,6 +63,7 @@ const tileDefs = {
   5: { name: "Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: "assets/blocks/cloud.svg", rarity: 1 },
   6: { name: "123 Block", color: "#f59e0b", solid: true, hardness: 0.45, texture: "assets/blocks/block-123.svg", rarity: 3 },
    7: { name: "Door", color: "rgba(217, 119, 6, 0.3)", solid: false, hardness: 0, texture: "assets/blocks/door.svg", rarity: 0 },
+   16: { name: "Lava", color: "#e25822", solid: true, hardness: 0.2, texture: "assets/blocks/lava.svg", rarity: 1 },
   15: { name: "Land Lock", color: "#FFD700", solid: true, hardness: 2.0, texture: "assets/blocks/land-lock.svg", rarity: 1 },
   // Growing seeds (100-106)
   100: { name: "Growing Grass", color: "#62c462", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 1, sourceItem: 9 },
@@ -78,6 +83,7 @@ const itemDefs = {
   6: { name: "123 Block", icon: "assets/items/item-123.svg", color: "#f59e0b", rarity: 1 },
   8: { name: "Gem", icon: "assets/items/gem.svg", color: "#3b82f6", rarity: 3 },
   15: { name: "Land Lock", icon: "assets/items/land-lock.svg", color: "#FFD700", rarity: 1 },
+   16: { name: "Lava", icon: "assets/items/lava-block.svg", color: "#e25822", rarity: 1 },
   9: { name: "Grass Seed", icon: "assets/items/grass-seed.svg", color: "#62c462", rarity: 1 },
   10: { name: "Dirt Seed", icon: "assets/items/dirt-seed.svg", color: "#8f5f3d", rarity: 1 },
   11: { name: "Stone Seed", icon: "assets/items/stone-seed.svg", color: "#8d98a2", rarity: 1 },
@@ -92,7 +98,7 @@ for (const [id, def] of Object.entries(itemDefs)) {
   ITEM_NAME_TO_ID[def.name] = Number(id);
 }
 
-const hotbarOrder = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15];
+const hotbarOrder = [1, 2, 3, 4, 5, 6, 16, 9, 10, 11, 12, 13, 14, 15];
 
 // Simple inventory state
 const inventory = {
@@ -110,6 +116,7 @@ const inventory = {
   13: 0,
   14: 0,
   15: 0,
+  16: 0,
 };
 
 let selectedSlot = 0;
@@ -226,6 +233,14 @@ function generateWorld() {
       setTile(x, trunkBase - 5, 1);
     }
   }
+
+  // Fill the bottom rows with lava to mirror server generation
+  const lavaDepth = 3;
+  for (let y = WORLD_HEIGHT - lavaDepth; y < WORLD_HEIGHT; y += 1) {
+    for (let x = 0; x < WORLD_WIDTH; x += 1) {
+      setTile(x, y, LAVA_TILE);
+    }
+  }
 }
 
 generateWorld();
@@ -267,6 +282,7 @@ const player = {
   maxHealth: MAX_HEALTH,
   punchUntil: 0,
   nextPunchAt: 0,
+  lastLavaHitAt: 0,
 };
 
 const camera = {
@@ -411,7 +427,7 @@ function saveInventoryItems() {
     if (ONLINE_MODE && networkState.connected) {
       // Send inventory to server so it persists across devices
       const payload = {};
-      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
+      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
       validKeys.forEach((k) => { payload[k] = Math.max(0, Math.min(INVENTORY_STACK_LIMIT, inventory[k] || 0)); });
       sendSocket({ type: "inventory_update", inventory: payload });
     }
@@ -450,6 +466,7 @@ function loadInventoryItems() {
           inventory[seed] = Math.min(INVENTORY_STACK_LIMIT, loaded[seed] || 0);
         }
         inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 0);
+        inventory[16] = Math.min(INVENTORY_STACK_LIMIT, loaded[16] || 0);
       }
     }
   } catch (err) {
@@ -457,7 +474,7 @@ function loadInventoryItems() {
   }
   
   // Remove ALL keys that aren't in the valid list
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
   for (const key in inventory) {
     const numKey = parseInt(key);
     if (!validKeys.includes(numKey)) {
@@ -477,7 +494,7 @@ function applyInventoryFromServer(serverInv) {
   }
   
   // Clear current inventory
-  const validIds = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
+  const validIds = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
   validIds.forEach((k) => { inventory[k] = 0; });
   
   // Apply server inventory (handle both ID-based legacy and name-based formats)
@@ -807,6 +824,14 @@ function rectIntersectsSolid(x, y, w, h) {
     }
   }
   return false;
+}
+
+function getPlayerTileBounds() {
+  const left = Math.floor(player.x / TILE);
+  const right = Math.floor((player.x + player.w - 1) / TILE);
+  const top = Math.floor(player.y / TILE);
+  const bottom = Math.floor((player.y + player.h - 1) / TILE);
+  return { left, right, top, bottom };
 }
 
 function moveWithCollisions(dt) {
@@ -1171,6 +1196,8 @@ function tryBreak(dt) {
 
 function calculateBlockDrop(tileType) {
   const def = tileDefs[tileType];
+  if (!def) return null;
+  if (tileType === LAVA_TILE) return LAVA_TILE;
   const rarity = def.rarity || 1;
   const hardness = def.hardness || 0.5;
   
@@ -2181,9 +2208,10 @@ function resetInventoryState() {
   inventory[13] = 0;
   inventory[14] = 0;
   inventory[15] = 0;
+  inventory[16] = 0;
   
   // Remove any stray keys
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
   for (const key in inventory) {
     if (!validKeys.includes(parseInt(key))) {
       delete inventory[key];
@@ -2324,7 +2352,7 @@ function pickupDrop(drop) {
   
   // For seeds and blocks, move them to quick slots (first 5) if they're not already there
   const isSeed = itemId >= 9 && itemId <= 14;
-  const isBlock = itemId >= 0 && itemId <= 7;
+  const isBlock = (itemId >= 1 && itemId <= 7) || itemId === 15 || itemId === 16;
   
   if (isSeed || isBlock) {
     const currentIndex = hotbarOrder.indexOf(itemId);
@@ -2397,6 +2425,69 @@ function drawDrops() {
   }
 }
 
+function respawnLocal() {
+  const doorX = Math.floor(WORLD_WIDTH / 2);
+  const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
+  player.x = doorX * TILE;
+  player.y = (doorBaseY - 2) * TILE;
+  player.vx = 0;
+  player.vy = 0;
+  player.health = MAX_HEALTH;
+  setAuthMessage("Respawned at spawn.");
+}
+
+function handleLavaDamage(now) {
+  if (ONLINE_MODE && networkState.connected) return; // Server is authoritative in online mode
+
+  const bounds = getPlayerTileBounds();
+  let lavaHit = null;
+  for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
+    for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
+      if (!inBounds(tx, ty)) continue;
+      if (getTile(tx, ty) === LAVA_TILE) {
+        lavaHit = { tx, ty };
+        break;
+      }
+    }
+    if (lavaHit) break;
+  }
+
+  // Also treat standing on top of lava as a hit
+  if (!lavaHit) {
+    const footY = Math.min(WORLD_HEIGHT - 1, bounds.bottom + 1);
+    for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
+      if (!inBounds(tx, footY)) continue;
+      if (getTile(tx, footY) === LAVA_TILE) {
+        lavaHit = { tx, ty: footY };
+        break;
+      }
+    }
+  }
+
+  if (!lavaHit) return;
+  if (player.lastLavaHitAt && now - player.lastLavaHitAt < LAVA_COOLDOWN_MS) return;
+  player.lastLavaHitAt = now;
+
+  const lavaCenterX = lavaHit.tx * TILE + TILE * 0.5;
+  const playerCenterX = player.x + player.w * 0.5;
+  const dir = Math.sign(playerCenterX - lavaCenterX) || (player.facing || 1);
+  const knockVX = LAVA_KNOCKBACK * dir;
+  const knockVY = -KNOCKBACK_LIFT;
+  const nudgeX = dir * 22;
+  const nudgeY = -10;
+
+  player.x += nudgeX;
+  player.y += nudgeY;
+  player.vx += knockVX;
+  player.vy = Math.min(player.vy, knockVY);
+  player.health = Math.max(0, player.health - LAVA_DAMAGE);
+  setAuthMessage("Ouch! Lava burns.");
+
+  if (player.health <= 0) {
+    respawnLocal();
+  }
+}
+
 function update(dt, now) {
   if (!gameplayUnlocked) {
     return;
@@ -2426,6 +2517,7 @@ function update(dt, now) {
   if (player.vy > 900) player.vy = 900;
 
   moveWithCollisions(dt);
+  handleLavaDamage(now);
   tryBreak(dt);
   tryPlace();
   updateDrops(dt);
