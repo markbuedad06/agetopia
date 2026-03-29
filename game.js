@@ -288,6 +288,24 @@ function setAuthMessage(message) {
   }
 }
 
+function updateWorldOwnerDisplay() {
+  const worldOwnerEl = document.getElementById("worldOwnerDisplay");
+  if (!worldOwnerEl) return;
+  
+  if (!worldOwner || !worldOwner.username) {
+    worldOwnerEl.classList.add("hidden");
+    return;
+  }
+  
+  const isOwner = worldOwner.userId === networkState.userId;
+  if (isOwner) {
+    worldOwnerEl.textContent = `🔒 ${worldOwner.username}'s World`;
+    worldOwnerEl.classList.remove("hidden");
+  } else {
+    worldOwnerEl.classList.add("hidden");
+  }
+}
+
 function setOnlineBadge(isOnline, text) {
   if (!onlineStateEl) return;
   onlineStateEl.classList.toggle("online", isOnline);
@@ -1143,6 +1161,7 @@ function tryPlace() {
         username: networkState.username
       };
       console.log("Player claimed world - owner set to", { userId: networkState.userId, username: networkState.username });
+      updateWorldOwnerDisplay();
       setAuthMessage(`${networkState.username} claimed the world!`);
     } else {
       console.log("World already has owner:", { ownerId: worldOwner.userId, currentUserId: networkState.userId });
@@ -1620,9 +1639,11 @@ function connectSocket(token) {
       // Set world owner if it exists
       if (msg.worldOwner && msg.worldOwner.userId) {
         worldOwner = {
-          userId: msg.worldOwner.userId
+          userId: msg.worldOwner.userId,
+          username: msg.worldOwner.username
         };
-        console.log("World owner loaded from server on init:", { ownerId: msg.worldOwner.userId, myUserId: networkState.userId });
+        console.log("World owner loaded from server on init:", { ownerId: msg.worldOwner.userId, username: msg.worldOwner.username, myUserId: networkState.userId });
+        updateWorldOwnerDisplay();
       }
       
       unlockGameplay();
@@ -1844,6 +1865,7 @@ function connectSocket(token) {
         username: msg.username
       };
       console.log("World owner broadcast received:", { ownerId: msg.userId, username: msg.username, myUserId: networkState.userId });
+      updateWorldOwnerDisplay();
       if (msg.userId === networkState.userId) {
         setAuthMessage(`You claimed the world!`);
       } else {
