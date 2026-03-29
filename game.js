@@ -721,6 +721,14 @@ function setupChatUI() {
       closeChat();
     }
   });
+
+  // Allow opening chat via Enter when hidden
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Enter" && chatBar.classList.contains("hidden") && !isChatFocused()) {
+      e.preventDefault();
+      openChat();
+    }
+  });
 }
 
 function unlockGameplay() {
