@@ -1279,9 +1279,9 @@ function drawHealthBar(worldX, worldY, health, maxHealth, label) {
   ctx.fillStyle = ratio > 0.35 ? "#4ade80" : "#ef4444";
   ctx.fillRect(px - 10, py - 16, Math.floor(barW * ratio), 6);
 
-  ctx.font = "10px Trebuchet MS";
+  ctx.font = "14px Trebuchet MS";
   ctx.textAlign = "center";
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#00ff00";
   ctx.fillText(label, px + 12, py - 19);
 }
 
