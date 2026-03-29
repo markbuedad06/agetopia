@@ -887,6 +887,7 @@ function tryBreak(dt) {
     breakState.progress = 0;
     breakState.targetX = -1;
     breakState.targetY = -1;
+    console.warn("Break denied - not owner", { worldOwnerId: worldOwner.userId, myUserId: networkState.userId });
     setAuthMessage("Only the world owner can break blocks here!");
     return;
   }
@@ -1141,7 +1142,10 @@ function tryPlace() {
         userId: networkState.userId,
         username: networkState.username
       };
+      console.log("Player claimed world - owner set to", { userId: networkState.userId, username: networkState.username });
       setAuthMessage(`${networkState.username} claimed the world!`);
+    } else {
+      console.log("World already has owner:", { ownerId: worldOwner.userId, currentUserId: networkState.userId });
     }
     
     sendSocket({ 
@@ -1618,6 +1622,7 @@ function connectSocket(token) {
         worldOwner = {
           userId: msg.worldOwner.userId
         };
+        console.log("World owner loaded from server on init:", { ownerId: msg.worldOwner.userId, myUserId: networkState.userId });
       }
       
       unlockGameplay();
@@ -1838,6 +1843,7 @@ function connectSocket(token) {
         userId: msg.userId,
         username: msg.username
       };
+      console.log("World owner broadcast received:", { ownerId: msg.userId, username: msg.username, myUserId: networkState.userId });
       if (msg.userId === networkState.userId) {
         setAuthMessage(`You claimed the world!`);
       } else {

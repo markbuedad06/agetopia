@@ -949,6 +949,7 @@ wss.on("connection", async (ws, req) => {
     const ownerUser = await usersDB.findOne({ id: worldOwnerId });
     if (ownerUser) {
       ownerInfo = { userId: worldOwnerId, username: ownerUser.username };
+      console.log(`[${worldName}] World owner info for init:`, { ownerId: worldOwnerId, ownerUsername: ownerUser.username, currentPlayerId: player.id });
     }
   }
 
@@ -1158,6 +1159,7 @@ wss.on("connection", async (ws, req) => {
           await createLock(worldName, x, y, player.userId);
           
           // Broadcast world owner info to all players in world
+          console.log(`[${worldName}] Claimed by player ${player.id} (${player.username})`);
           broadcast({ 
             type: "world_owner_set", 
             userId: player.userId,
