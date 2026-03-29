@@ -650,6 +650,22 @@ async function clearAllGameData() {
   }
 }
 
+async function resetWorldData(worldName) {
+  if (!worldName) return;
+  console.log(`🧹 Resetting world ${worldName}...`);
+  await pool.query("DELETE FROM world_blocks WHERE worldName = ?", [worldName]);
+  await pool.query("DELETE FROM growing_plants WHERE worldName = ?", [worldName]);
+  await pool.query("DELETE FROM locked_areas WHERE worldName = ?", [worldName]);
+  await pool.query("DELETE FROM world_owners WHERE worldName = ?", [worldName]);
+  await pool.query("DELETE FROM worlds WHERE worldName = ?", [worldName]);
+
+  worldCache.delete(worldName);
+  worldDrops.delete(worldName);
+  lockedAreasCache.delete(worldName);
+  worldOwnersCache.delete(worldName);
+  console.log(`✅ World ${worldName} reset complete`);
+}
+
 // Hash function for locking key
 function lockKey(worldName, centerX, centerY) {
   return `${worldName}:lock:${centerX}:${centerY}`;
@@ -924,6 +940,21 @@ app.post("/api/admin/clear-world-blocks", async (req, res) => {
   } catch (err) {
     console.error("Error clearing world_blocks:", err);
     return res.status(500).json({ error: "Failed to clear world_blocks: " + err.message });
+  }
+});
+
+app.post("/api/admin/reset-world", async (req, res) => {
+  try {
+    const raw = req.body?.worldName || req.query?.worldName || "";
+    const worldName = String(raw).trim().slice(0, 24);
+    if (!worldName) {
+      return res.status(400).json({ error: "worldName is required" });
+    }
+    await resetWorldData(worldName);
+    return res.json({ success: true, message: `World ${worldName} reset` });
+  } catch (err) {
+    console.error("Error resetting world:", err);
+    return res.status(500).json({ error: "Failed to reset world: " + err.message });
   }
 });
 
