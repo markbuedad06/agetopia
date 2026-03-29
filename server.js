@@ -1315,6 +1315,11 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
+    if (msg.type === "ping") {
+      send({ type: "pong" });
+      return;
+    }
+
     if (msg.type === "block_update") {
       try {
         const x = Number(msg.x);
