@@ -55,7 +55,7 @@ const tileDefs = {
   5: { name: "Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: "assets/blocks/cloud.svg", rarity: 1 },
   6: { name: "123 Block", color: "#f59e0b", solid: true, hardness: 0.45, texture: "assets/blocks/block-123.svg", rarity: 3 },
    7: { name: "Door", color: "rgba(217, 119, 6, 0.3)", solid: false, hardness: 0, texture: "assets/blocks/door.svg", rarity: 0 },
-  15: { name: "Land Lock", color: "#d946ef", solid: true, hardness: 0.2, texture: null, rarity: 0 },
+  15: { name: "Land Lock", color: "#FFD700", solid: true, hardness: 2.0, texture: null, rarity: 1 },
   // Growing seeds (100-106)
   100: { name: "Growing Grass", color: "#62c462", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 1, sourceItem: 9 },
   101: { name: "Growing Dirt", color: "#8f5f3d", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 2, sourceItem: 10 },
@@ -73,7 +73,7 @@ const itemDefs = {
   5: { name: "Cloud Block", icon: "assets/items/cloud-piece.svg", color: "#dae9ff", rarity: 1 },
   6: { name: "123 Block", icon: "assets/items/item-123.svg", color: "#f59e0b", rarity: 1 },
   8: { name: "Gem", icon: "assets/items/gem.svg", color: "#3b82f6", rarity: 3 },
-  15: { name: "Land Lock", icon: "assets/items/land-lock.svg", color: "#d946ef", rarity: 0 },
+  15: { name: "Land Lock", icon: "assets/items/land-lock.svg", color: "#FFD700", rarity: 1 },
   9: { name: "Grass Seed", icon: "assets/items/grass-seed.svg", color: "#62c462", rarity: 1 },
   10: { name: "Dirt Seed", icon: "assets/items/dirt-seed.svg", color: "#8f5f3d", rarity: 1 },
   11: { name: "Stone Seed", icon: "assets/items/stone-seed.svg", color: "#8d98a2", rarity: 1 },
@@ -953,8 +953,14 @@ function tryBreak(dt) {
       // Normal block breaking
       const dropItem = calculateBlockDrop(tile);
       
-      // Create drop if something drops
-      if (dropItem !== null) {
+      // Special handling for land_lock - goes directly to inventory
+      if (tile === 15) {
+        if (!inventory[15]) inventory[15] = 0;
+        inventory[15]++;
+        saveInventoryItems();
+        setAuthMessage("+1 Land Lock");
+      } else if (dropItem !== null) {
+        // Create drop if something drops
         const dropX = tx * TILE + TILE / 2;
         const dropY = ty * TILE + TILE / 2;
         const dropId = makeDropId();
