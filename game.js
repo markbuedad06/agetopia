@@ -279,6 +279,7 @@ let suppressBreakUntil = 0;
 let currentNow = performance.now();
 let digitCombo = "";
 let digitComboExpiresAt = 0;
+let chatRecentlyClosed = false;
 
 function isChatFocused() {
   return document.activeElement === chatInput;
@@ -690,11 +691,14 @@ function setupChatUI() {
     chatInput.focus();
     keys.clear();
     leftDown = false;
+    chatRecentlyClosed = false;
   };
 
   const closeChat = () => {
     chatBar.classList.add("hidden");
     chatInput.blur();
+    chatRecentlyClosed = true;
+    setTimeout(() => { chatRecentlyClosed = false; }, 80);
   };
 
   chatToggleBtn.addEventListener("click", () => {
@@ -716,15 +720,17 @@ function setupChatUI() {
       e.preventDefault();
       sendChatMessage();
       closeChat();
+      e.stopPropagation();
     } else if (e.code === "Escape") {
       e.preventDefault();
       closeChat();
+      e.stopPropagation();
     }
   });
 
   // Allow opening chat via Enter when hidden
   window.addEventListener("keydown", (e) => {
-    if (e.code === "Enter" && chatBar.classList.contains("hidden") && !isChatFocused()) {
+    if (e.code === "Enter" && chatBar.classList.contains("hidden") && !isChatFocused() && !chatRecentlyClosed) {
       e.preventDefault();
       openChat();
       return;
@@ -981,6 +987,8 @@ function sendChatMessage() {
   // Always close the chat panel after sending
   chatBar?.classList.add("hidden");
   chatInput?.blur();
+  chatRecentlyClosed = true;
+  setTimeout(() => { chatRecentlyClosed = false; }, 80);
 }
 
 function tryBreak(dt) {
