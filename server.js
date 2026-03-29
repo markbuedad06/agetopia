@@ -1549,15 +1549,12 @@ wss.on("connection", async (ws, req) => {
         }
         
         world[indexOf(x, y)] = tile;
-        if (tile === 0) {
-          await worldDB.remove({ key: blockKey(worldName, x, y) }, { multi: true });
-        } else {
-          await worldDB.update(
-            { key: blockKey(worldName, x, y) },
-            { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: formatDateForMySQL() },
-            { upsert: true }
-          );
-        }
+        // Persist air (tile 0) so destroyed blocks stay removed across restarts
+        await worldDB.update(
+          { key: blockKey(worldName, x, y) },
+          { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: formatDateForMySQL() },
+          { upsert: true }
+        );
 
         broadcast({ type: "block_update", x, y, tile }, null, worldName);
       } catch (err) {
