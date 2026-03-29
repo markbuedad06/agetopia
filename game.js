@@ -368,21 +368,30 @@ function loadInventoryItems() {
     }
     if (saved) {
       const loaded = JSON.parse(saved);
-      for (let item = 1; item <= 6; item++) {
-        inventory[item] = Math.min(INVENTORY_STACK_LIMIT, loaded[item] || 0);
+      
+      // Check if loaded data is missing land_lock - if so, clear it to reset
+      if (loaded && !loaded.hasOwnProperty('15')) {
+        console.log("Old inventory data detected (no land_lock), clearing to reset");
+        localStorage.removeItem(key);
+        saved = null; // Treat as if no save exists
+      } else if (saved) {
+        for (let item = 1; item <= 6; item++) {
+          inventory[item] = Math.min(INVENTORY_STACK_LIMIT, loaded[item] || 0);
+        }
+        inventory[8] = Math.min(INVENTORY_STACK_LIMIT, loaded[8] || 0);
+        for (let seed = 9; seed <= 14; seed++) {
+          inventory[seed] = Math.min(INVENTORY_STACK_LIMIT, loaded[seed] || 0);
+        }
+        inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 1);
       }
-      inventory[8] = Math.min(INVENTORY_STACK_LIMIT, loaded[8] || 0);
-      for (let seed = 9; seed <= 14; seed++) {
-        inventory[seed] = Math.min(INVENTORY_STACK_LIMIT, loaded[seed] || 0);
-      }
-      inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 1);
     }
   } catch (err) {
     console.error("Failed to load inventory", err);
   }
   
-  // Ensure land_lock is always at least 1
+  // FORCE ensure land_lock is always at least 1
   if (!inventory[15] || inventory[15] < 1) {
+    console.log("Ensuring player has land_lock...");
     inventory[15] = 1;
   }
   
@@ -395,6 +404,9 @@ function loadInventoryItems() {
       delete inventory[key];
     }
   }
+  
+  // Save updated inventory to ensure land_lock is persisted
+  saveInventoryItems();
 }
 
 function applyInventoryFromServer(serverInv) {
@@ -412,8 +424,9 @@ function applyInventoryFromServer(serverInv) {
     }
   });
   
-  // Ensure land_lock is always at least 1 for all players
+  // FORCE ensure land_lock is always at least 1 for all players
   if (!inventory[15] || inventory[15] < 1) {
+    console.log("Server inventory missing land_lock, adding...");
     inventory[15] = 1;
   }
   
