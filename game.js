@@ -99,6 +99,7 @@ const inventory = {
   12: 0,
   13: 0,
   14: 0,
+  15: 1, // Land Lock - 1 per player
 };
 
 let selectedSlot = 0;
