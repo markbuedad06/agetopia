@@ -913,6 +913,20 @@ app.post("/api/admin/clear-game-data", async (req, res) => {
   }
 });
 
+app.post("/api/admin/clear-world-blocks", async (req, res) => {
+  try {
+    console.log("🧹 Clearing world_blocks table...");
+    await pool.query("TRUNCATE TABLE world_blocks");
+    worldCache.clear();
+    worldDrops.clear();
+    console.log("✅ world_blocks cleared successfully");
+    return res.json({ success: true, message: "world_blocks table cleared" });
+  } catch (err) {
+    console.error("Error clearing world_blocks:", err);
+    return res.status(500).json({ error: "Failed to clear world_blocks: " + err.message });
+  }
+});
+
 app.use(express.static(__dirname));
 
 const wss = new WebSocketServer({ server, path: "/ws" });
