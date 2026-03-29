@@ -10,35 +10,31 @@
   <main class="login-shell">
     <section class="login-card" aria-label="World selection">
       <h1>World Hub</h1>
-      <p class="login-subtitle">Create a new world or find an existing one.</p>
+      <p class="login-subtitle">Search for a world or create one instantly.</p>
 
-      <label for="worldName">World name</label>
-      <input id="worldName" type="text" placeholder="my_world" maxlength="24" />
-
-      <div class="login-actions">
-        <button id="findWorldBtn" type="button">Find</button>
-        <button id="createWorldBtn" type="button" class="secondary">Create</button>
+      <div class="world-search">
+        <input id="worldName" type="text" placeholder="enter a world name" maxlength="24" />
+        <button id="createOrFindBtn" type="button">Create / Find</button>
       </div>
+      <p class="helper-text">Press Enter to search or create. Selecting a card joins that world.</p>
 
-      <div id="worldList" class="world-list"></div>
+      <div id="worldList" class="world-list cards"></div>
 
       <div class="login-actions">
         <button id="playDefaultBtn" type="button">Play Default</button>
         <button id="logoutBtn" type="button" class="secondary">Logout</button>
       </div>
 
-      <p id="worldMessage" class="auth-message" role="status">Choose a world to enter.</p>
+      <p id="worldMessage" class="auth-message" role="status">Loading worlds...</p>
     </section>
   </main>
 
   <script>
     const TOKEN_KEY = "agetopia_token";
-    const WORLD_STORE_KEY = "agetopia_worlds";
     const LAST_WORLD_KEY = "agetopia_world";
 
     const worldNameEl = document.getElementById("worldName");
-    const findWorldBtn = document.getElementById("findWorldBtn");
-    const createWorldBtn = document.getElementById("createWorldBtn");
+    const createOrFindBtn = document.getElementById("createOrFindBtn");
     const worldListEl = document.getElementById("worldList");
     const playDefaultBtn = document.getElementById("playDefaultBtn");
     const logoutBtn = document.getElementById("logoutBtn");
@@ -53,42 +49,10 @@
       return safe.slice(0, 24);
     }
 
-    function readWorlds() {
-      try {
-        const worlds = JSON.parse(localStorage.getItem(WORLD_STORE_KEY) || "[]");
-        if (!Array.isArray(worlds)) return [];
-        return worlds.filter((name) => typeof name === "string" && name.length > 0);
-      } catch {
-        return [];
-      }
-    }
-
-    function writeWorlds(worlds) {
-      localStorage.setItem(WORLD_STORE_KEY, JSON.stringify(worlds));
-    }
-
     function joinWorld(worldName) {
       const clean = normalizeWorldName(worldName) || "default";
       localStorage.setItem(LAST_WORLD_KEY, clean);
       window.location.href = `index.html?online=1&world=${encodeURIComponent(clean)}`;
-    }
-
-    function renderWorlds() {
-      const worlds = readWorlds();
-      if (worlds.length === 0) {
-        worldListEl.innerHTML = "<p class=\"world-empty\">No saved worlds yet.</p>";
-        return;
-      }
-
-      worldListEl.innerHTML = "";
-      worlds.forEach((world) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.className = "world-row";
-        row.textContent = world;
-        row.addEventListener("click", () => joinWorld(world));
-        worldListEl.appendChild(row);
-      });
     }
 
     function requireSession() {
@@ -98,31 +62,83 @@
       }
     }
 
-    findWorldBtn.addEventListener("click", () => {
+    function renderWorlds(worlds) {
+      if (!Array.isArray(worlds) || worlds.length === 0) {
+        worldListEl.innerHTML = "<p class=\"world-empty\">No worlds found. Create one to get started.</p>";
+        return;
+      }
+
+      worldListEl.innerHTML = "";
+      worlds.forEach((world) => {
+        const hasOwner = Boolean(world.ownerName);
+        const icon = hasOwner ? "🔒" : "🔓";
+        const ownerLabel = hasOwner ? `Owner: ${world.ownerName}` : "Unclaimed";
+
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "world-card";
+        card.innerHTML = `
+          <div class="world-card__title">${icon} ${world.worldName}</div>
+          <div class="world-card__meta">${ownerLabel}</div>
+        `;
+        card.addEventListener("click", () => joinWorld(world.worldName));
+        worldListEl.appendChild(card);
+      });
+    }
+
+    async function fetchWorlds(searchTerm = "") {
+      const token = localStorage.getItem(TOKEN_KEY) || "";
+      const resp = await fetch(`/api/worlds?search=${encodeURIComponent(searchTerm)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (resp.status === 401) {
+        window.location.href = "login.html";
+        return [];
+      }
+
+      if (!resp.ok) {
+        throw new Error("Failed to load worlds");
+      }
+
+      const data = await resp.json();
+      return data.worlds || [];
+    }
+
+    async function loadWorlds(searchTerm = "") {
+      try {
+        setMessage(searchTerm ? `Searching for "${searchTerm}"...` : "Loading worlds...");
+        const worlds = await fetchWorlds(searchTerm);
+        renderWorlds(worlds);
+        setMessage(
+          searchTerm
+            ? worlds.length
+              ? `Showing results for "${searchTerm}"`
+              : `No worlds match "${searchTerm}". Create it!`
+            : "Choose a world to enter."
+        );
+      } catch (err) {
+        console.error(err);
+        setMessage("Could not load worlds. Try again.");
+      }
+    }
+
+    function handleCreateOrFind() {
       const world = normalizeWorldName(worldNameEl.value);
       if (!world) {
-        setMessage("Enter a valid world name first.");
+        setMessage("Enter a world name to create or find.");
         return;
       }
       setMessage(`Joining ${world}...`);
       joinWorld(world);
-    });
+    }
 
-    createWorldBtn.addEventListener("click", () => {
-      const world = normalizeWorldName(worldNameEl.value);
-      if (!world) {
-        setMessage("Enter a valid world name first.");
-        return;
+    createOrFindBtn.addEventListener("click", handleCreateOrFind);
+    worldNameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleCreateOrFind();
       }
-
-      const worlds = readWorlds();
-      if (!worlds.includes(world)) {
-        worlds.unshift(world);
-      }
-      writeWorlds(worlds.slice(0, 12));
-      renderWorlds();
-      setMessage(`Created ${world}. Entering world...`);
-      joinWorld(world);
     });
 
     playDefaultBtn.addEventListener("click", () => joinWorld("default"));
@@ -133,7 +149,7 @@
     });
 
     requireSession();
-    renderWorlds();
+    loadWorlds();
   </script>
 </body>
 </html>

@@ -927,6 +927,38 @@ app.post("/api/admin/clear-world-blocks", async (req, res) => {
   }
 });
 
+// List worlds with owner info (requires auth)
+app.get("/api/worlds", authFromHeader, async (req, res) => {
+  try {
+    const search = String(req.query.search || "").trim();
+    const like = `%${search}%`;
+
+    const [rows] = await pool.query(
+      `SELECT w.worldName, w.createdAt, wo.userId AS ownerId, u.username AS ownerName
+       FROM worlds w
+       LEFT JOIN world_owners wo ON wo.worldName = w.worldName
+       LEFT JOIN users u ON u.id = wo.userId
+       WHERE (? = '' OR w.worldName LIKE ?)
+       ORDER BY w.createdAt DESC
+       LIMIT 50`,
+      [search, like]
+    );
+
+    const worlds = rows.map((row) => ({
+      worldName: row.worldName,
+      ownerId: row.ownerId || null,
+      ownerName: row.ownerName || null,
+      createdAt: row.createdAt,
+      locked: Boolean(row.ownerId),
+    }));
+
+    return res.json({ worlds });
+  } catch (err) {
+    console.error("Error fetching worlds list:", err);
+    return res.status(500).json({ error: "Failed to fetch worlds" });
+  }
+});
+
 app.use(express.static(__dirname));
 
 const wss = new WebSocketServer({ server, path: "/ws" });
