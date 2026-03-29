@@ -2413,7 +2413,7 @@ function drawDrops() {
     ctx.save();
     ctx.globalAlpha = 0.9;
     
-    const isSeed = (drop.tile >= 9 && drop.tile <= 14) || drop.tile === 17;
+    const isSeed = (drop.tile >= 9 && drop.tile <= 14) || drop.tile === 17 || (def?.name && def.name.toLowerCase().includes("seed"));
     
     if (isSeed) {
       // Prefer icon if present (avoids lava seed looking like a block)
