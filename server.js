@@ -1295,8 +1295,8 @@ wss.on("connection", async (ws, req) => {
           );
         }
 
-        // Sync blocks to worlds table
-        await syncBlocksToWorldsTable(worldName);
+        // Don't sync blocks on every update - world_blocks table is the source of truth
+        // blocksData in worlds table is just a Cache for occasional snapshots
 
         broadcast({ type: "block_update", x, y, tile }, null, worldName);
       } catch (err) {
