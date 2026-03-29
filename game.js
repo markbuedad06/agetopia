@@ -82,6 +82,12 @@ const itemDefs = {
   14: { name: "123 Seed", icon: "assets/items/123-seed.svg", color: "#f59e0b", rarity: 1 },
 };
 
+// Build item name to ID mapping
+const ITEM_NAME_TO_ID = {};
+for (const [id, def] of Object.entries(itemDefs)) {
+  ITEM_NAME_TO_ID[def.name] = Number(id);
+}
+
 const hotbarOrder = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14];
 
 // Simple inventory state
@@ -414,15 +420,32 @@ function applyInventoryFromServer(serverInv) {
     loadInventoryItems();
     return;
   }
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
-  validKeys.forEach((k) => {
-    const val = Number(serverInv[k]);
-    if (Number.isFinite(val) && val >= 0) {
-      inventory[k] = Math.min(INVENTORY_STACK_LIMIT, Math.floor(val));
+  
+  // Clear current inventory
+  const validIds = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
+  validIds.forEach((k) => { inventory[k] = 0; });
+  
+  // Apply server inventory (handle both ID-based legacy and name-based formats)
+  for (const [key, value] of Object.entries(serverInv)) {
+    let itemId = null;
+    
+    // Check if key is a numeric ID (legacy format)
+    if (!isNaN(key)) {
+      itemId = Number(key);
     } else {
-      inventory[k] = 0;
+      // Try to look up by item name (new format)
+      itemId = ITEM_NAME_TO_ID[key];
     }
-  });
+    
+    if (itemId && validIds.includes(itemId)) {
+      const val = Number(value);
+      if (Number.isFinite(val) && val >= 0) {
+        inventory[itemId] = Math.min(INVENTORY_STACK_LIMIT, Math.floor(val));
+      } else {
+        inventory[itemId] = 0;
+      }
+    }
+  }
   
   // FORCE ensure land_lock is always at least 1 for all players
   if (!inventory[15] || inventory[15] < 1) {

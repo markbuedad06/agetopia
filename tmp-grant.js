@@ -1,11 +1,18 @@
 const mysql = require('mysql2/promise');
 (async () => {
+  // Use Railway internal variables (better than public proxy)
+  const host = process.env.MYSQLHOST || 'mysql.railway.internal';
+  const port = process.env.MYSQLPORT || 3306;
+  const user = process.env.MYSQLUSER || 'root';
+  const password = process.env.MYSQLPASSWORD || '';
+  const database = process.env.MYSQLDATABASE || 'railway';
+  
   const conn = await mysql.createConnection({
-    host: 'gondola.proxy.rlwy.net',
-    port: 55945,
-    user: 'root',
-    password: 'ZalBLjfhNWkjPESnvjprezQKozetBxeh',
-    database: 'railway',
+    host,
+    port,
+    user,
+    password,
+    database,
     ssl: { rejectUnauthorized: false },
   });
   console.log('connected');

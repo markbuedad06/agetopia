@@ -62,19 +62,48 @@ const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 
 const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14];
 
+// Item ID to name mapping
+const ITEM_ID_TO_NAME = {
+  1: "Grass Block",
+  2: "Dirt Block",
+  3: "Stone Block",
+  4: "Wood Block",
+  5: "Cloud Block",
+  6: "123 Block",
+  8: "Gem",
+  15: "Land Lock",
+  9: "Grass Seed",
+  10: "Dirt Seed",
+  11: "Stone Seed",
+  12: "Wood Seed",
+  13: "Cloud Seed",
+  14: "Glow Seed",
+};
+
+// Reverse mapping
+const ITEM_NAME_TO_ID = {};
+for (const [id, name] of Object.entries(ITEM_ID_TO_NAME)) {
+  ITEM_NAME_TO_ID[name] = Number(id);
+}
+
 function defaultInventory() {
   const inv = {};
-  INVENTORY_KEYS.forEach((k) => { inv[k] = 0; });
+  Object.values(ITEM_ID_TO_NAME).forEach((name) => { inv[name] = 0; });
   return inv;
 }
 
 function sanitizeInventory(input) {
   const inv = defaultInventory();
   if (!input || typeof input !== "object") return inv;
-  for (const key of INVENTORY_KEYS) {
-    const val = Number(input[key]);
-    if (Number.isFinite(val) && val >= 0) {
-      inv[key] = Math.min(INVENTORY_STACK_LIMIT, Math.floor(val));
+  
+  // Handle both ID-based (legacy) and name-based inventory
+  for (const [key, val] of Object.entries(input)) {
+    const itemName = isNaN(key) ? key : ITEM_ID_TO_NAME[Number(key)];
+    if (itemName && Object.prototype.hasOwnProperty.call(inv, itemName)) {
+      const num = Number(val);
+      if (Number.isFinite(num) && num >= 0) {
+        inv[itemName] = Math.min(INVENTORY_STACK_LIMIT, Math.floor(num));
+      }
     }
   }
   return inv;
@@ -352,6 +381,75 @@ async function initStores() {
   profilesDB = makeProfilesRepo();
   growingPlantsDB = makeGrowingPlantsRepo();
   inventoriesDB = makeInventoriesRepo();
+  
+  // Run migration to convert inventory from ID-based to name-based
+  await migrateInventoryToNames();
+}
+
+async function migrateInventoryToNames() {
+  try {
+    console.log("Checking if inventory migration is needed...");
+    const [rows] = await pool.query("SELECT `key`, inventory FROM inventories LIMIT 1");
+    if (rows.length === 0) {
+      console.log("No inventory data to migrate");
+      return;
+    }
+    
+    const firstInventory = rows[0].inventory;
+    let inventory = {};
+    try {
+      inventory = typeof firstInventory === "string" ? JSON.parse(firstInventory) : firstInventory || {};
+    } catch {
+      return;
+    }
+    
+    // Check if already using item names (if any key is a string that's a valid item name)
+    const isAlreadyMigrated = Object.keys(inventory).some(key => Object.prototype.hasOwnProperty.call(ITEM_NAME_TO_ID, key));
+    if (isAlreadyMigrated) {
+      console.log("Inventory already uses item names");
+      return;
+    }
+    
+    // Check if using numeric IDs
+    const isNumericInventory = Object.keys(inventory).some(key => !isNaN(key));
+    if (!isNumericInventory) {
+      console.log("Inventory format not recognized for migration");
+      return;
+    }
+    
+    console.log("Migrating inventories from ID-based to name-based...");
+    const [allRows] = await pool.query("SELECT `key`, userId, inventory FROM inventories");
+    
+    for (const row of allRows) {
+      let oldInv = {};
+      try {
+        oldInv = typeof row.inventory === "string" ? JSON.parse(row.inventory) : row.inventory || {};
+      } catch {
+        continue;
+      }
+      
+      // Convert from ID-based to name-based
+      const newInv = {};
+      for (const [key, value] of Object.entries(oldInv)) {
+        const itemId = Number(key);
+        const itemName = ITEM_ID_TO_NAME[itemId];
+        if (itemName) {
+          newInv[itemName] = value;
+        }
+      }
+      
+      const newInvJson = JSON.stringify(newInv);
+      await pool.query(
+        "UPDATE inventories SET inventory = ? WHERE `key` = ?",
+        [newInvJson, row.key]
+      );
+    }
+    
+    console.log(`Successfully migrated ${allRows.length} inventory records to use item names`);
+  } catch (err) {
+    console.error("Migration encountered an issue (non-fatal):", err.message);
+    // Don't throw - allow server to continue even if migration has issues
+  }
 }
 
 function createToken(user) {
