@@ -345,7 +345,7 @@ function saveInventoryItems() {
     if (ONLINE_MODE && networkState.connected) {
       // Send inventory to server so it persists across devices
       const payload = {};
-      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14];
+      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
       validKeys.forEach((k) => { payload[k] = Math.max(0, Math.min(INVENTORY_STACK_LIMIT, inventory[k] || 0)); });
       sendSocket({ type: "inventory_update", inventory: payload });
     }

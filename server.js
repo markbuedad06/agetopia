@@ -89,6 +89,8 @@ for (const [id, name] of Object.entries(ITEM_ID_TO_NAME)) {
 function defaultInventory() {
   const inv = {};
   Object.values(ITEM_ID_TO_NAME).forEach((name) => { inv[name] = 0; });
+  // FORCE ensure land_lock is always at least 1
+  inv["Land Lock"] = 1;
   return inv;
 }
 
@@ -106,6 +108,9 @@ function sanitizeInventory(input) {
       }
     }
   }
+  
+  // FORCE ensure land_lock is always at least 1
+  inv["Land Lock"] = Math.max(1, inv["Land Lock"] || 0);
   return inv;
 }
 
