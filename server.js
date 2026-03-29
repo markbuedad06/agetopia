@@ -60,7 +60,7 @@ let inventoriesDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 
-const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14];
+const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
 
 // Item ID to name mapping
 const ITEM_ID_TO_NAME = {

@@ -88,7 +88,7 @@ for (const [id, def] of Object.entries(itemDefs)) {
   ITEM_NAME_TO_ID[def.name] = Number(id);
 }
 
-const hotbarOrder = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14];
+const hotbarOrder = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15];
 
 // Simple inventory state
 const inventory = {

@@ -1,0 +1,14 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Lock body (golden) -->
+  <rect x="8" y="14" width="16" height="14" rx="2" fill="#FFD700" stroke="#DAA520" stroke-width="1"/>
+  
+  <!-- Lock shackle (golden arch) -->
+  <path d="M 12 14 Q 12 6 16 6 Q 20 6 20 14" fill="none" stroke="#FFD700" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Key slot -->
+  <circle cx="16" cy="19" r="2" fill="#DAA520"/>
+  <rect x="15" y="21" width="2" height="4" fill="#DAA520"/>
+  
+  <!-- Highlight for shine -->
+  <ellipse cx="12" cy="16" rx="2" ry="3" fill="#FFED4E" opacity="0.6"/>
+</svg>
