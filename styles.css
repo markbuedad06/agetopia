@@ -93,24 +93,6 @@ body {
   gap: 0.5rem;
 }
 
-.world-search {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 0.55rem;
-  align-items: center;
-  margin-top: 0.5rem;
-}
-
-.world-search input {
-  width: 100%;
-}
-
-.helper-text {
-  margin: 0.35rem 0 0.5rem;
-  font-size: 0.78rem;
-  opacity: 0.8;
-}
-
 .world-list {
   margin-top: 0.75rem;
   display: grid;
@@ -123,36 +105,20 @@ body {
   opacity: 0.8;
 }
 
-.world-list.cards {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.6rem;
-}
-
-.world-card {
+.world-row {
   border: 1px solid #5e4c7e;
-  border-radius: 10px;
-  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
   font: inherit;
+  font-size: 0.8rem;
   color: var(--text);
   background: #2a203a;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.12s ease;
 }
 
-.world-card:hover {
+.world-row:hover {
   border-color: #7e62a6;
-  transform: translateY(-1px);
-}
-
-.world-card__title {
-  font-weight: 700;
-  margin-bottom: 0.25rem;
-}
-
-.world-card__meta {
-  font-size: 0.82rem;
-  opacity: 0.85;
 }
 
 .game-shell {
