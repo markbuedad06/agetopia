@@ -2449,10 +2449,17 @@ function handleLavaDamage(now) {
   if (ONLINE_MODE && networkState.connected) return; // Server is authoritative in online mode
 
   const bounds = getPlayerTileBounds();
+  const pW = player.w;
+  const pH = player.h;
   let lavaHit = null;
   for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
     for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
-      if (getTile(tx, ty) === LAVA_TILE) {
+      if (getTile(tx, ty) !== LAVA_TILE) continue;
+      const tileX = tx * TILE;
+      const tileY = ty * TILE;
+      const xOverlap = (player.x + pW) >= tileX && player.x <= tileX + TILE;
+      const yOverlap = (player.y + pH) >= tileY && player.y <= tileY + TILE;
+      if (xOverlap && yOverlap) {
         lavaHit = { tx, ty };
         break;
       }

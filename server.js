@@ -1088,12 +1088,28 @@ wss.on("connection", async (ws, req) => {
     worldCache_entry.loaded = true;
   }
 
-  function getPlayerTileBounds(p) {
+  function touchesLavaTile(p) {
+    const pW = 24;
+    const pH = 32;
     const left = Math.floor(p.x / TILE);
-    const right = Math.floor((p.x + 23) / TILE);
+    const right = Math.floor((p.x + pW) / TILE);
     const top = Math.floor(p.y / TILE);
-    const bottom = Math.floor((p.y + 31) / TILE);
-    return { left, right, top, bottom };
+    const bottom = Math.floor((p.y + pH) / TILE);
+    const worldArr = getOrCreateWorldArray(worldName);
+
+    for (let ty = top; ty <= bottom; ty += 1) {
+      for (let tx = left; tx <= right; tx += 1) {
+        if (!inBounds(tx, ty)) continue;
+        if (worldArr[indexOf(tx, ty)] !== LAVA_TILE) continue;
+
+        const tileX = tx * TILE;
+        const tileY = ty * TILE;
+        const xOverlap = (p.x + pW) >= tileX && p.x <= tileX + TILE;
+        const yOverlap = (p.y + pH) >= tileY && p.y <= tileY + TILE;
+        if (xOverlap && yOverlap) return { tx, ty };
+      }
+    }
+    return null;
   }
 
   async function respawnPlayer(target) {
@@ -1125,20 +1141,7 @@ wss.on("connection", async (ws, req) => {
   }
 
   async function handleLavaContact(p) {
-    const bounds = getPlayerTileBounds(p);
-    const worldArr = getOrCreateWorldArray(worldName);
-
-    let lavaHit = null;
-    for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
-      for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
-        if (worldArr[indexOf(tx, ty)] === LAVA_TILE) {
-          lavaHit = { tx, ty };
-          break;
-        }
-      }
-      if (lavaHit) break;
-    }
-
+    const lavaHit = touchesLavaTile(p);
     if (!lavaHit) return;
 
     const now = Date.now();
