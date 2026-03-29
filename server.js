@@ -60,9 +60,11 @@ let profilesDB;
 let growingPlantsDB;
 let inventoriesDB;
 let lockedAreasDB;
+let worldOwnersDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 const lockedAreasCache = new Map(); // worldName -> Array of locked areas
+const worldOwnersCache = new Map(); // worldName -> userId of owner
 
 const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
 
@@ -199,6 +201,13 @@ async function ensureSchema() {
     createdAt DATETIME NOT NULL,
     INDEX lock_world_idx (worldName),
     INDEX lock_user_idx (userId)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS world_owners (
+    worldName VARCHAR(64) PRIMARY KEY,
+    userId INT NOT NULL,
+    createdAt DATETIME NOT NULL,
+    UNIQUE INDEX owner_user_idx (userId, worldName)
   )`);
 }
 
@@ -424,6 +433,24 @@ function makeLockedAreasRepo() {
   };
 }
 
+function makeWorldOwnersRepo() {
+  return {
+    findOne: async (query = {}) => {
+      const worldName = query.worldName;
+      if (!worldName) return undefined;
+      const [rows] = await pool.query("SELECT worldName, userId, createdAt FROM world_owners WHERE worldName = ? LIMIT 1", [worldName]);
+      return rows[0];
+    },
+    insert: async (doc) => {
+      const createdAt = doc.createdAt || formatDateForMySQL();
+      await pool.query(
+        "INSERT INTO world_owners (worldName, userId, createdAt) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId)",
+        [doc.worldName, doc.userId, createdAt]
+      );
+    },
+  };
+}
+
 async function initStores() {
   pool = buildPoolFromUrl();
   await ensureSchema();
@@ -433,6 +460,7 @@ async function initStores() {
   growingPlantsDB = makeGrowingPlantsRepo();
   inventoriesDB = makeInventoriesRepo();
   lockedAreasDB = makeLockedAreasRepo();
+  worldOwnersDB = makeWorldOwnersRepo();
   
   // Run migration to convert inventory from ID-based to name-based
   await migrateInventoryToNames();
@@ -598,6 +626,41 @@ async function removeLock(worldName, centerX, centerY) {
   await lockedAreasDB.remove({ key });
   // Invalidate cache
   lockedAreasCache.delete(worldName);
+}
+
+// Get world owner (from cache or database)
+async function getWorldOwner(worldName) {
+  // Check cache first
+  if (worldOwnersCache.has(worldName)) {
+    return worldOwnersCache.get(worldName);
+  }
+  
+  // Query database
+  const owner = await worldOwnersDB.findOne({ worldName });
+  if (owner) {
+    worldOwnersCache.set(worldName, owner.userId);
+    return owner.userId;
+  }
+  
+  return null; // No owner yet
+}
+
+// Set world owner (first player to place land_lock claims the world)
+async function setWorldOwner(worldName, userId) {
+  // Only set if not already owned
+  const existing = await getWorldOwner(worldName);
+  if (existing && existing !== userId) {
+    return false; // World already claimed by someone else
+  }
+  
+  await worldOwnersDB.insert({
+    worldName,
+    userId,
+  });
+  
+  // Update cache
+  worldOwnersCache.set(worldName, userId);
+  return true; // Successfully claimed
 }
 
 function createToken(user) {
@@ -1033,6 +1096,14 @@ wss.on("connection", async (ws, req) => {
       
       if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE)) return;  // Allow tiles 0-6 and land_lock(15)
 
+      // Check world ownership before allowing any placement/breaking
+      const worldOwner = await getWorldOwner(worldName);
+      if (worldOwner && worldOwner !== player.userId) {
+        // World is owned by another player - they can only walk around
+        send({ type: "error", message: "This world is owned by another player" });
+        return;
+      }
+
       // Check if position is locked (and player is not the owner)
       const isLocked = await isPositionLocked(worldName, x, y, player.userId);
       if (isLocked && tile !== 0) {
@@ -1046,7 +1117,13 @@ wss.on("connection", async (ws, req) => {
       
       // Handle land_lock placement/removal
       if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
-        // Placing land_lock - create a lock
+        // Placing land_lock - claim the world if not already owned
+        const claimed = await setWorldOwner(worldName, player.userId);
+        if (!claimed && worldOwner !== player.userId) {
+          send({ type: "error", message: "This world has already been claimed" });
+          return;
+        }
+        // Create a lock around this land_lock
         await createLock(worldName, x, y, player.userId);
       } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
         // Removing land_lock - remove the lock
@@ -1072,6 +1149,13 @@ wss.on("connection", async (ws, req) => {
       const y = Number(msg.y);
       if (!Number.isInteger(x) || !Number.isInteger(y)) return;
       if (!inBounds(x, y)) return;
+
+      // Check world ownership before allowing seed planting
+      const worldOwner = await getWorldOwner(worldName);
+      if (worldOwner && worldOwner !== player.userId) {
+        send({ type: "error", message: "This world is owned by another player" });
+        return;
+      }
 
       // Check if position is locked
       const isLocked = await isPositionLocked(worldName, x, y, player.userId);
@@ -1185,6 +1269,13 @@ wss.on("connection", async (ws, req) => {
     }
 
     if (msg.type === "drop_collect") {
+      // Check world ownership before allowing item collection
+      const worldOwner = await getWorldOwner(worldName);
+      if (worldOwner && worldOwner !== player.userId) {
+        send({ type: "error", message: "This world is owned by another player" });
+        return;
+      }
+
       const dropId = String(msg.id || "");
       const dropsMap = getWorldDrops(worldName);
       dropsMap.delete(dropId);
