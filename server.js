@@ -616,6 +616,40 @@ async function migrateInventoryToNames() {
   }
 }
 
+async function clearAllGameData() {
+  try {
+    console.log("🧹 Clearing all game data...");
+    
+    // Truncate all game tables to remove worlds, blocks, plants, locks, etc.
+    await pool.query("TRUNCATE TABLE world_blocks");
+    console.log("✓ Cleared world_blocks");
+    
+    await pool.query("TRUNCATE TABLE growing_plants");
+    console.log("✓ Cleared growing_plants");
+    
+    await pool.query("TRUNCATE TABLE locked_areas");
+    console.log("✓ Cleared locked_areas");
+    
+    await pool.query("TRUNCATE TABLE world_owners");
+    console.log("✓ Cleared world_owners");
+    
+    await pool.query("TRUNCATE TABLE worlds");
+    console.log("✓ Cleared worlds");
+    
+    // Clear caches
+    worldCache.clear();
+    worldDrops.clear();
+    lockedAreasCache.clear();
+    worldOwnersCache.clear();
+    console.log("✓ Cleared all caches");
+    
+    console.log("✅ All game data cleared! Fresh start ready.");
+  } catch (err) {
+    console.error("❌ Error clearing game data:", err.message);
+    throw err;
+  }
+}
+
 // Hash function for locking key
 function lockKey(worldName, centerX, centerY) {
   return `${worldName}:lock:${centerX}:${centerY}`;
@@ -867,6 +901,16 @@ app.post("/api/login", async (req, res) => {
 
 app.get("/api/me", authFromHeader, (req, res) => {
   return res.json({ id: req.user.id, username: req.user.username });
+});
+
+app.post("/api/admin/clear-game-data", async (req, res) => {
+  try {
+    await clearAllGameData();
+    return res.json({ success: true, message: "Game data cleared successfully" });
+  } catch (err) {
+    console.error("Error clearing game data via API:", err);
+    return res.status(500).json({ error: "Failed to clear game data: " + err.message });
+  }
 });
 
 app.use(express.static(__dirname));
@@ -1415,6 +1459,12 @@ wss.on("connection", async (ws, req) => {
 
 async function start() {
   await initStores();
+  
+  // Clear all game data if flag is set
+  if (process.env.CLEAR_GAME_DATA === "true") {
+    await clearAllGameData();
+  }
+  
   server.listen(PORT, () => {
     console.log(`Agetopia server running at http://localhost:${PORT}`);
   });
