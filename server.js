@@ -1022,17 +1022,8 @@ wss.on("connection", async (ws, req) => {
   }
 
   // Ensure world exists in worlds table (create with NULL owner if new)
-  const existingWorld = await worldsDB.findOne({ worldName }).catch(() => null);
-  if (!existingWorld) {
-    try {
-      await worldsDB.insert({
-        worldName,
-        userId: null, // Will be set when someone places land_lock
-      });
-    } catch (err) {
-      console.error(`Error creating world entry for ${worldName}:`, err);
-    }
-  }
+  // This is now handled lazily by setWorldOwner when land_lock is placed
+  // So we don't need to pre-create it here
 
   const others = [];
   for (const [id, p] of players.entries()) {
