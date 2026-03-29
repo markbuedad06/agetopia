@@ -708,14 +708,14 @@ function setupChatUI() {
 
   chatSendBtn.addEventListener("click", () => {
     sendChatMessage();
-    openChat();
+    closeChat();
   });
 
   chatInput.addEventListener("keydown", (e) => {
     if (e.code === "Enter") {
       e.preventDefault();
       sendChatMessage();
-      openChat();
+      closeChat();
     } else if (e.code === "Escape") {
       e.preventDefault();
       closeChat();
@@ -2460,6 +2460,8 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "Enter") {
       e.preventDefault();
       sendChatMessage();
+      chatBar?.classList.add("hidden");
+      chatInput?.blur();
     } else if (e.code === "Escape") {
       e.preventDefault();
       chatBar?.classList.add("hidden");
