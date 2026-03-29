@@ -10,17 +10,9 @@
   <main class="login-shell">
     <section class="login-card" aria-label="World selection">
       <h1>World Hub</h1>
-      <p class="login-subtitle">Create a new world or find an existing one.</p>
+      <p class="login-subtitle">Claimed worlds you can join.</p>
 
-      <label for="worldName">World name</label>
-      <input id="worldName" type="text" placeholder="my_world" maxlength="24" />
-
-      <div class="login-actions">
-        <button id="findWorldBtn" type="button">Find</button>
-        <button id="createWorldBtn" type="button" class="secondary">Create</button>
-      </div>
-
-      <div id="worldList" class="world-list"></div>
+      <div id="worldList" class="world-list world-grid"></div>
 
       <div class="login-actions">
         <button id="playDefaultBtn" type="button">Play Default</button>
@@ -33,16 +25,16 @@
 
   <script>
     const TOKEN_KEY = "agetopia_token";
-    const WORLD_STORE_KEY = "agetopia_worlds";
     const LAST_WORLD_KEY = "agetopia_world";
-
-    const worldNameEl = document.getElementById("worldName");
-    const findWorldBtn = document.getElementById("findWorldBtn");
-    const createWorldBtn = document.getElementById("createWorldBtn");
     const worldListEl = document.getElementById("worldList");
     const playDefaultBtn = document.getElementById("playDefaultBtn");
     const logoutBtn = document.getElementById("logoutBtn");
     const worldMessageEl = document.getElementById("worldMessage");
+
+    function authHeader() {
+      const token = localStorage.getItem(TOKEN_KEY) || "";
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    }
 
     function setMessage(text) {
       worldMessageEl.textContent = text;
@@ -53,42 +45,10 @@
       return safe.slice(0, 24);
     }
 
-    function readWorlds() {
-      try {
-        const worlds = JSON.parse(localStorage.getItem(WORLD_STORE_KEY) || "[]");
-        if (!Array.isArray(worlds)) return [];
-        return worlds.filter((name) => typeof name === "string" && name.length > 0);
-      } catch {
-        return [];
-      }
-    }
-
-    function writeWorlds(worlds) {
-      localStorage.setItem(WORLD_STORE_KEY, JSON.stringify(worlds));
-    }
-
     function joinWorld(worldName) {
       const clean = normalizeWorldName(worldName) || "default";
       localStorage.setItem(LAST_WORLD_KEY, clean);
       window.location.href = `index.html?online=1&world=${encodeURIComponent(clean)}`;
-    }
-
-    function renderWorlds() {
-      const worlds = readWorlds();
-      if (worlds.length === 0) {
-        worldListEl.innerHTML = "<p class=\"world-empty\">No saved worlds yet.</p>";
-        return;
-      }
-
-      worldListEl.innerHTML = "";
-      worlds.forEach((world) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.className = "world-row";
-        row.textContent = world;
-        row.addEventListener("click", () => joinWorld(world));
-        worldListEl.appendChild(row);
-      });
     }
 
     function requireSession() {
@@ -98,33 +58,6 @@
       }
     }
 
-    findWorldBtn.addEventListener("click", () => {
-      const world = normalizeWorldName(worldNameEl.value);
-      if (!world) {
-        setMessage("Enter a valid world name first.");
-        return;
-      }
-      setMessage(`Joining ${world}...`);
-      joinWorld(world);
-    });
-
-    createWorldBtn.addEventListener("click", () => {
-      const world = normalizeWorldName(worldNameEl.value);
-      if (!world) {
-        setMessage("Enter a valid world name first.");
-        return;
-      }
-
-      const worlds = readWorlds();
-      if (!worlds.includes(world)) {
-        worlds.unshift(world);
-      }
-      writeWorlds(worlds.slice(0, 12));
-      renderWorlds();
-      setMessage(`Created ${world}. Entering world...`);
-      joinWorld(world);
-    });
-
     playDefaultBtn.addEventListener("click", () => joinWorld("default"));
 
     logoutBtn.addEventListener("click", () => {
@@ -132,8 +65,66 @@
       window.location.href = "login.html";
     });
 
+    async function fetchClaimedWorlds() {
+      try {
+        setMessage("Loading worlds...");
+        const res = await fetch("/api/worlds", { headers: { ...authHeader() } });
+        if (!res.ok) {
+          setMessage("Failed to load worlds.");
+          return [];
+        }
+        const data = await res.json();
+        return Array.isArray(data.worlds) ? data.worlds : [];
+      } catch (err) {
+        console.error("Error loading worlds", err);
+        setMessage("Could not reach server.");
+        return [];
+      }
+    }
+
+    function renderClaimedWorlds(worlds) {
+      if (!worlds || worlds.length === 0) {
+        worldListEl.innerHTML = "<p class=\"world-empty\">No claimed worlds yet.</p>";
+        return;
+      }
+
+      worldListEl.innerHTML = "";
+      worlds.forEach((w) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "world-card";
+        card.setAttribute("aria-label", `World ${w.worldName}, owner ${w.ownerName}, ${w.playerCount} online`);
+
+        const titleRow = document.createElement("div");
+        titleRow.className = "world-card__title";
+        titleRow.textContent = `🔒 ${w.worldName || "unknown"}`;
+
+        const meta = document.createElement("div");
+        meta.className = "world-card__meta";
+        meta.textContent = `Owner: ${w.ownerName || "Unknown"}`;
+
+        const players = document.createElement("div");
+        players.className = "world-card__pill";
+        players.textContent = `${w.playerCount || 0} inside`;
+
+        card.appendChild(titleRow);
+        card.appendChild(meta);
+        card.appendChild(players);
+
+        card.addEventListener("click", () => joinWorld(w.worldName));
+        worldListEl.appendChild(card);
+      });
+    }
+
+    async function init() {
+      requireSession();
+      const worlds = await fetchClaimedWorlds();
+      renderClaimedWorlds(worlds);
+      setMessage(worlds.length ? "Choose a world to enter." : "No claimed worlds yet.");
+    }
+
     requireSession();
-    renderWorlds();
+    init();
   </script>
 </body>
 </html>
