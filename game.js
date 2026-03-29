@@ -2320,38 +2320,14 @@ function updateDrops(dt) {
     drop.y += drop.vy * dt;
     drop.x += drop.vx * dt;
 
-    // Prevent drops from passing through solid tiles (vertical + lateral)
+    // Prevent drops from passing through solid tiles
     const halfSize = 10;
-    const left = drop.x - halfSize;
-    const right = drop.x + halfSize;
-    const top = drop.y - halfSize;
-    const bottom = drop.y + halfSize;
-    const leftTile = Math.floor(left / TILE);
-    const rightTile = Math.floor(right / TILE);
-    const topTile = Math.floor(top / TILE);
-    const bottomTile = Math.floor(bottom / TILE);
-
-    // Vertical collision (floor)
-    if (isSolid(getTile(leftTile, bottomTile)) || isSolid(getTile(rightTile, bottomTile))) {
-      drop.y = bottomTile * TILE - halfSize;
+    const tileBelowX = Math.floor(drop.x / TILE);
+    const tileBelowY = Math.floor((drop.y + halfSize) / TILE);
+    if (isSolid(getTile(tileBelowX, tileBelowY))) {
+      drop.y = tileBelowY * TILE - halfSize;
       drop.vy = 0;
-      drop.vx *= 0.85;
-    }
-
-    // Vertical collision (ceiling)
-    if (isSolid(getTile(leftTile, topTile)) || isSolid(getTile(rightTile, topTile))) {
-      drop.y = (topTile + 1) * TILE + halfSize;
-      drop.vy = Math.max(0, drop.vy);
-    }
-
-    // Side collisions
-    if (isSolid(getTile(leftTile, topTile)) || isSolid(getTile(leftTile, bottomTile))) {
-      drop.x = (leftTile + 1) * TILE + halfSize;
-      drop.vx = 0;
-    }
-    if (isSolid(getTile(rightTile, topTile)) || isSolid(getTile(rightTile, bottomTile))) {
-      drop.x = rightTile * TILE - halfSize;
-      drop.vx = 0;
+      drop.vx *= 0.5;
     }
     
     drop.floatTime += dt;
