@@ -194,7 +194,7 @@ async function ensureSchema() {
   await pool.query(`CREATE TABLE IF NOT EXISTS locked_areas (
     ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
     worldName VARCHAR(64) NOT NULL,
-    userId INT NOT NULL,
+    userId VARCHAR(191) NOT NULL,
     centerX INT NOT NULL,
     centerY INT NOT NULL,
     radius INT NOT NULL DEFAULT 10,
@@ -205,7 +205,7 @@ async function ensureSchema() {
 
   await pool.query(`CREATE TABLE IF NOT EXISTS world_owners (
     worldName VARCHAR(64) PRIMARY KEY,
-    userId INT NOT NULL,
+    userId VARCHAR(191) NOT NULL,
     createdAt DATETIME NOT NULL,
     UNIQUE INDEX owner_user_idx (userId, worldName)
   )`);
