@@ -1214,44 +1214,21 @@ function calculateBlockDrop(tileType) {
     return LAVA_TILE;           // lava block
   }
   const rarity = def.rarity || 1;
-  const hardness = def.hardness || 0.5;
-  
-  // Combine rarity and hardness into a difficulty factor (0-1)
-  const difficulty = (hardness * 0.6 + rarity * 0.4);
-  
   const roll = Math.random();
-  
-  // Nothing drop chance: decreases with difficulty
-  const nothingChance = Math.max(0.1, 0.4 - difficulty * 0.2);
-  if (roll < nothingChance) return null;
-  
-  const adjustedRoll = (roll - nothingChance) / (1 - nothingChance);
-  
-  // Seed drop: high chance, slightly higher for low rarity
-  // Reduce seed drops across all blocks by 10 percentage points
-  const seedChance = Math.max(0, (rarity <= 1 ? 0.65 : 0.5) - 0.1);
-  if (adjustedRoll < seedChance) {
-    // Return seed version: tiles 1-6 map to seeds 9-14
-    return tileType + 8;
-  }
-  
-  // Block drop: moderate chance, increases with rarity/hardness
-  const blockChance = difficulty * 0.7;
-  if (adjustedRoll < seedChance + blockChance) {
-    // Return block version (the tile itself)
-    return tileType;
-  }
-  
-  // Gem drop: rare, only for higher rarity blocks
-  if (rarity >= 2 && difficulty >= 0.7) {
-    // Random chance increases with rarity
-    if (Math.random() < rarity * 0.1) {
-      return 8; // Gem item ID
-    }
-  }
-  
-  // Default to seed if all else fails
-  return tileType + 8;
+
+  // Base distribution: 25% seed, 35% block, 40% nothing.
+  // Reduce seed chance for higher rarity (rarity>1); shifted seed loss goes to block chance.
+  const baseSeed = 0.25;
+  const baseBlock = 0.35;
+  const baseNothing = 0.40;
+  const rarityPenalty = Math.max(0, rarity - 1) * 0.05; // -5% per rarity step above 1
+  const seedChance = Math.max(0.1, baseSeed - rarityPenalty);
+  const blockChance = baseBlock + (baseSeed - seedChance); // reclaim reduced seed chance
+
+  if (roll < baseNothing) return null;
+  if (roll < baseNothing + seedChance) return tileType + 8; // seed drop
+  if (roll < baseNothing + seedChance + blockChance) return tileType; // block drop
+  return null; // Fallback (should not hit because totals sum to 1)
 }
 
 function tryPlace() {
