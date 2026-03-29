@@ -66,8 +66,10 @@ let inventoriesDB;
 let lockedAreasDB;
 let worldOwnersDB;
 let worldsDB;
+let dropsDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
+const worldDropsLoaded = new Set(); // track which worlds have drops loaded from DB
 const lockedAreasCache = new Map(); // worldName -> Array of locked areas
 const worldOwnersCache = new Map(); // worldName -> userId of owner
 
@@ -150,6 +152,25 @@ function getWorldDrops(worldName) {
   return worldDrops.get(worldName);
 }
 
+async function ensureDropsLoaded(worldName) {
+  if (worldDropsLoaded.has(worldName)) return;
+  const rows = await dropsDB.find({ worldName });
+  const dropsMap = getWorldDrops(worldName);
+  for (const row of rows) {
+    dropsMap.set(String(row.id), {
+      id: String(row.id),
+      tile: Number(row.tile),
+      x: Number(row.x),
+      y: Number(row.y),
+      vx: Number(row.vx) || 0,
+      vy: Number(row.vy) || 0,
+      floatY: Number(row.floatY) || 0,
+      floatTime: Number(row.floatTime) || 0,
+    });
+  }
+  worldDropsLoaded.add(worldName);
+}
+
 async function ensureSchema() {
   await pool.query(`CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -225,6 +246,20 @@ async function ensureSchema() {
     createdAt DATETIME NOT NULL,
     updatedAt DATETIME NOT NULL,
     INDEX world_user_idx (userId)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS world_drops (
+    id VARCHAR(191) PRIMARY KEY,
+    worldName VARCHAR(64) NOT NULL,
+    tile INT NOT NULL,
+    x FLOAT NOT NULL,
+    y FLOAT NOT NULL,
+    vx FLOAT NOT NULL,
+    vy FLOAT NOT NULL,
+    floatY FLOAT NOT NULL,
+    floatTime FLOAT NOT NULL,
+    updatedAt DATETIME NOT NULL,
+    INDEX drop_world_idx (worldName)
   )`);
 }
 
@@ -500,6 +535,32 @@ function makeWorldsRepo() {
   };
 }
 
+function makeDropsRepo() {
+  return {
+    find: async (query = {}) => {
+      if (!query.worldName) return [];
+      const [rows] = await pool.query(
+        "SELECT id, worldName, tile, x, y, vx, vy, floatY, floatTime FROM world_drops WHERE worldName = ?",
+        [query.worldName]
+      );
+      return rows;
+    },
+    update: async (filter, doc) => {
+      const id = filter.id || doc.id;
+      if (!id) return;
+      await pool.query(
+        "INSERT INTO world_drops (id, worldName, tile, x, y, vx, vy, floatY, floatTime, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), tile=VALUES(tile), x=VALUES(x), y=VALUES(y), vx=VALUES(vx), vy=VALUES(vy), floatY=VALUES(floatY), floatTime=VALUES(floatTime), updatedAt=VALUES(updatedAt)",
+        [id, doc.worldName, doc.tile, doc.x, doc.y, doc.vx, doc.vy, doc.floatY, doc.floatTime, doc.updatedAt || formatDateForMySQL()]
+      );
+    },
+    remove: async (filter) => {
+      if (filter.id) {
+        await pool.query("DELETE FROM world_drops WHERE id = ?", [filter.id]);
+      }
+    },
+  };
+}
+
 async function initStores() {
   pool = buildPoolFromUrl();
   await ensureSchema();
@@ -511,6 +572,7 @@ async function initStores() {
   lockedAreasDB = makeLockedAreasRepo();
   worldOwnersDB = makeWorldOwnersRepo();
   worldsDB = makeWorldsRepo();
+  dropsDB = makeDropsRepo();
   
   // Run migration to convert inventory from ID-based to name-based
   await migrateInventoryToNames();
@@ -645,10 +707,14 @@ async function clearAllGameData() {
     
     await pool.query("TRUNCATE TABLE worlds");
     console.log("✓ Cleared worlds");
+
+    await pool.query("TRUNCATE TABLE world_drops");
+    console.log("✓ Cleared world_drops");
     
     // Clear caches
     worldCache.clear();
     worldDrops.clear();
+    worldDropsLoaded.clear();
     lockedAreasCache.clear();
     worldOwnersCache.clear();
     console.log("✓ Cleared all caches");
@@ -960,9 +1026,11 @@ app.post("/api/admin/clear-world-blocks", async (req, res) => {
   try {
     console.log("🧹 Clearing world_blocks table...");
     await pool.query("TRUNCATE TABLE world_blocks");
+    await pool.query("TRUNCATE TABLE world_drops");
     worldCache.clear();
     worldDrops.clear();
-    console.log("✅ world_blocks cleared successfully");
+    worldDropsLoaded.clear();
+    console.log("✅ world_blocks and world_drops cleared successfully");
     return res.json({ success: true, message: "world_blocks table cleared" });
   } catch (err) {
     console.error("Error clearing world_blocks:", err);
@@ -1087,6 +1155,8 @@ wss.on("connection", async (ws, req) => {
     await applyPersistedBlocks(worldName, world);
     worldCache_entry.loaded = true;
   }
+
+  await ensureDropsLoaded(worldName);
 
   function touchesLavaTile(p) {
     const pW = 24;
@@ -1614,12 +1684,14 @@ wss.on("connection", async (ws, req) => {
     }
 
     if (msg.type === "get_drops") {
+      await ensureDropsLoaded(worldName);
       const dropsArr = Array.from(getWorldDrops(worldName).values());
       ws.send(JSON.stringify({ type: "drops", drops: dropsArr }));
       return;
     }
 
     if (msg.type === "drop_spawn") {
+      await ensureDropsLoaded(worldName);
       const { id, tile, x, y, vx, vy, floatY, floatTime } = msg;
       const dropId = String(id || randomUUID());
       const drop = {
@@ -1634,13 +1706,16 @@ wss.on("connection", async (ws, req) => {
       };
       const dropsMap = getWorldDrops(worldName);
       dropsMap.set(dropId, drop);
+      await dropsDB.update({ id: dropId }, { id: dropId, worldName, ...drop, updatedAt: formatDateForMySQL() }, { upsert: true });
       broadcast({ type: "drop_spawn", drop }, null, worldName);
     }
 
     if (msg.type === "drop_collect") {
+      await ensureDropsLoaded(worldName);
       const dropId = String(msg.id || "");
       const dropsMap = getWorldDrops(worldName);
       dropsMap.delete(dropId);
+      await dropsDB.remove({ id: dropId });
       broadcast({ type: "drop_collect", id: dropId }, null, worldName);
     }
   });
