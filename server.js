@@ -34,6 +34,8 @@ const PUNCH_RANGE = TILE * 2.25;
 const PUNCH_COOLDOWN_MS = 320;
 const KNOCKBACK_PUSH = 420;
 const KNOCKBACK_LIFT = -260;
+const LOCK_RADIUS = 10; // Tiles around a land_lock that are protected
+const LAND_LOCK_TILE = 15;
 
 const app = express();
 const server = http.createServer(app);
@@ -57,8 +59,10 @@ let worldDB;
 let profilesDB;
 let growingPlantsDB;
 let inventoriesDB;
+let lockedAreasDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
+const lockedAreasCache = new Map(); // worldName -> Array of locked areas
 
 const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
 
@@ -151,10 +155,8 @@ async function ensureSchema() {
     x INT NOT NULL,
     y INT NOT NULL,
     tile INT NOT NULL,
-    ownerId INT NULL,
     updatedAt DATETIME NOT NULL,
-    INDEX world_idx (worldName),
-    INDEX owner_idx (ownerId)
+    INDEX world_idx (worldName)
   )`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS profiles (
@@ -185,6 +187,18 @@ async function ensureSchema() {
     inventory JSON NOT NULL,
     updatedAt DATETIME NOT NULL,
     UNIQUE INDEX inv_user_idx (userId)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS locked_areas (
+    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
+    worldName VARCHAR(64) NOT NULL,
+    userId INT NOT NULL,
+    centerX INT NOT NULL,
+    centerY INT NOT NULL,
+    radius INT NOT NULL DEFAULT 10,
+    createdAt DATETIME NOT NULL,
+    INDEX lock_world_idx (worldName),
+    INDEX lock_user_idx (userId)
   )`);
 }
 
@@ -259,15 +273,15 @@ function makeWorldRepo() {
   return {
     find: async (query = {}) => {
       if (!query.worldName) return [];
-      const [rows] = await pool.query("SELECT worldName, x, y, tile, ownerId FROM world_blocks WHERE worldName = ?", [query.worldName]);
+      const [rows] = await pool.query("SELECT worldName, x, y, tile FROM world_blocks WHERE worldName = ?", [query.worldName]);
       return rows;
     },
     update: async (filter, doc) => {
       const key = filter.key || doc.key;
       if (!key) return;
       await pool.query(
-        "INSERT INTO world_blocks (`key`, worldName, x, y, tile, ownerId, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), tile=VALUES(tile), ownerId=VALUES(ownerId), updatedAt=VALUES(updatedAt)",
-        [key, doc.worldName, doc.x, doc.y, doc.tile, doc.ownerId || null, doc.updatedAt || formatDateForMySQL()]
+        "INSERT INTO world_blocks (`key`, worldName, x, y, tile, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), tile=VALUES(tile), updatedAt=VALUES(updatedAt)",
+        [key, doc.worldName, doc.x, doc.y, doc.tile, doc.updatedAt || formatDateForMySQL()]
       );
     },
     remove: async (filter) => {
@@ -380,6 +394,36 @@ function makeInventoriesRepo() {
   };
 }
 
+function makeLockedAreasRepo() {
+  return {
+    find: async (query = {}) => {
+      if (!query.worldName) return [];
+      const [rows] = await pool.query("SELECT `key`, worldName, userId, centerX, centerY, radius, createdAt FROM locked_areas WHERE worldName = ?", [query.worldName]);
+      return rows;
+    },
+    findOne: async (query = {}) => {
+      const key = query.key;
+      if (!key) return undefined;
+      const [rows] = await pool.query("SELECT `key`, worldName, userId, centerX, centerY, radius, createdAt FROM locked_areas WHERE `key` = ? LIMIT 1", [key]);
+      return rows[0];
+    },
+    insert: async (doc) => {
+      const key = doc.key || `${doc.worldName}:lock:${doc.centerX}:${doc.centerY}`;
+      const createdAt = doc.createdAt || formatDateForMySQL();
+      await pool.query(
+        "INSERT INTO locked_areas (`key`, worldName, userId, centerX, centerY, radius, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [key, doc.worldName, doc.userId, doc.centerX, doc.centerY, doc.radius || LOCK_RADIUS, createdAt]
+      );
+      return { key };
+    },
+    remove: async (filter) => {
+      if (filter.key) {
+        await pool.query("DELETE FROM locked_areas WHERE `key` = ?", [filter.key]);
+      }
+    },
+  };
+}
+
 async function initStores() {
   pool = buildPoolFromUrl();
   await ensureSchema();
@@ -388,6 +432,7 @@ async function initStores() {
   profilesDB = makeProfilesRepo();
   growingPlantsDB = makeGrowingPlantsRepo();
   inventoriesDB = makeInventoriesRepo();
+  lockedAreasDB = makeLockedAreasRepo();
   
   // Run migration to convert inventory from ID-based to name-based
   await migrateInventoryToNames();
@@ -501,6 +546,58 @@ async function migrateInventoryToNames() {
     console.error("Migration encountered an issue (non-fatal):", err.message);
     // Don't throw - allow server to continue even if migration has issues
   }
+}
+
+// Hash function for locking key
+function lockKey(worldName, centerX, centerY) {
+  return `${worldName}:lock:${centerX}:${centerY}`;
+}
+
+// Check if a position is within a locked area
+async function isPositionLocked(worldName, x, y, userId = null) {
+  // Load locked areas for this world if not cached
+  if (!lockedAreasCache.has(worldName)) {
+    const locks = await lockedAreasDB.find({ worldName });
+    lockedAreasCache.set(worldName, locks || []);
+  }
+  
+  const locks = lockedAreasCache.get(worldName) || [];
+  
+  for (const lock of locks) {
+    const dist = Math.sqrt(Math.pow(x - lock.centerX, 2) + Math.pow(y - lock.centerY, 2));
+    if (dist <= lock.radius) {
+      // If userId is provided and matches lock owner, allow it
+      if (userId && lock.userId === userId) return false;
+      return true; // Position is locked and not owned by this user
+    }
+  }
+  return false; // Not locked
+}
+
+// Create a lock when land_lock is placed
+async function createLock(worldName, centerX, centerY, userId) {
+  const key = lockKey(worldName, centerX, centerY);
+  const existing = await lockedAreasDB.findOne({ key });
+  if (!existing) {
+    await lockedAreasDB.insert({
+      key,
+      worldName,
+      userId,
+      centerX,
+      centerY,
+      radius: LOCK_RADIUS,
+    });
+    // Invalidate cache
+    lockedAreasCache.delete(worldName);
+  }
+}
+
+// Remove a lock when land_lock is broken
+async function removeLock(worldName, centerX, centerY) {
+  const key = lockKey(worldName, centerX, centerY);
+  await lockedAreasDB.remove({ key });
+  // Invalidate cache
+  lockedAreasCache.delete(worldName);
 }
 
 function createToken(user) {
@@ -703,34 +800,6 @@ function distance(a, b) {
   const bx = b.x + 12;
   const by = b.y + 22;
   return Math.hypot(ax - bx, ay - by);
-}
-
-const LAND_LOCK_PROTECTION_RADIUS = 5; // Protect 5 tiles in each direction from land lock
-
-// Check if a player can modify blocks at a location (due to land protection)
-async function isLandProtected(worldName, x, y, playerId) {
-  // Check for land locks within protection radius
-  const minX = Math.max(0, x - LAND_LOCK_PROTECTION_RADIUS);
-  const maxX = Math.min(WORLD_WIDTH - 1, x + LAND_LOCK_PROTECTION_RADIUS);
-  const minY = Math.max(0, y - LAND_LOCK_PROTECTION_RADIUS);
-  const maxY = Math.min(WORLD_HEIGHT - 1, y + LAND_LOCK_PROTECTION_RADIUS);
-  
-  // Query for land locks in the area
-  const [rows] = await pool.query(
-    `SELECT ownerId FROM world_blocks 
-     WHERE worldName = ? AND tile = 15 
-     AND x >= ? AND x <= ? AND y >= ? AND y <= ?`,
-    [worldName, minX, maxX, minY, maxY]
-  );
-  
-  // If there's a land lock and it's not owned by this player, it's protected
-  for (const row of rows) {
-    if (row.ownerId && row.ownerId !== playerId) {
-      return true; // Protected by another player
-    }
-  }
-  
-  return false; // Not protected
 }
 
 wss.on("connection", async (ws, req) => {
@@ -962,29 +1031,35 @@ wss.on("connection", async (ws, req) => {
       const isDoorTile = (x === doorX && y === doorBaseY);
       if (isDoorTile) return;  // Prevent breaking/placing on door
       
-      // Allow tiles 0-6 and 15 (land_lock)
-      if ((tile < 0 || tile > 6) && tile !== 15) return;
-      
-      // Check land protection (unless placing land_lock)
-      if (tile !== 15) {
-        const isProtected = await isLandProtected(worldName, x, y, user.id);
-        if (isProtected) {
-          ws.send(JSON.stringify({ type: "error", error: "This land is protected by another player" }));
-          return;
-        }
+      if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE)) return;  // Allow tiles 0-6 and land_lock(15)
+
+      // Check if position is locked (and player is not the owner)
+      const isLocked = await isPositionLocked(worldName, x, y, player.userId);
+      if (isLocked && tile !== 0) {
+        // Trying to place a block in a locked area - reject
+        send({ type: "error", message: "This area is locked by another player" });
+        return;
       }
 
       const world = getOrCreateWorldArray(worldName);
-      world[indexOf(x, y)] = tile;
+      const oldTile = world[indexOf(x, y)];
       
+      // Handle land_lock placement/removal
+      if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
+        // Placing land_lock - create a lock
+        await createLock(worldName, x, y, player.userId);
+      } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
+        // Removing land_lock - remove the lock
+        await removeLock(worldName, x, y);
+      }
+      
+      world[indexOf(x, y)] = tile;
       if (tile === 0) {
         await worldDB.remove({ key: blockKey(worldName, x, y) }, { multi: true });
       } else {
-        // Store ownerId for land_lock blocks
-        const ownerId = (tile === 15) ? user.id : null;
         await worldDB.update(
           { key: blockKey(worldName, x, y) },
-          { key: blockKey(worldName, x, y), worldName, x, y, tile, ownerId, updatedAt: formatDateForMySQL() },
+          { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: formatDateForMySQL() },
           { upsert: true }
         );
       }
@@ -997,11 +1072,11 @@ wss.on("connection", async (ws, req) => {
       const y = Number(msg.y);
       if (!Number.isInteger(x) || !Number.isInteger(y)) return;
       if (!inBounds(x, y)) return;
-      
-      // Check land protection for seed planting
-      const isProtected = await isLandProtected(worldName, x, y, user.id);
-      if (isProtected) {
-        ws.send(JSON.stringify({ type: "error", error: "Cannot plant seeds on protected land" }));
+
+      // Check if position is locked
+      const isLocked = await isPositionLocked(worldName, x, y, player.userId);
+      if (isLocked) {
+        send({ type: "error", message: "This area is locked by another player" });
         return;
       }
 
@@ -1067,6 +1142,21 @@ wss.on("connection", async (ws, req) => {
       ws.send(JSON.stringify({
         type: "growing_plants",
         plants: plantsList
+      }));
+    }
+
+    if (msg.type === "get_locked_areas") {
+      const locks = await lockedAreasDB.find({ worldName });
+      const locksList = locks.map(lock => ({
+        userId: lock.userId,
+        centerX: lock.centerX,
+        centerY: lock.centerY,
+        radius: lock.radius
+      }));
+
+      ws.send(JSON.stringify({
+        type: "locked_areas",
+        locks: locksList
       }));
     }
 

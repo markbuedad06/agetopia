@@ -114,10 +114,24 @@ const world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
 const remotePlayers = new Map();
 const drops = new Map();
 const growingPlants = new Map(); // Track growing seeds: "x:y" -> { progress, totalTime }
+const lockedAreas = []; // Array of locked areas: { userId, centerX, centerY, radius }
 let nextDropId = 1;
 
 function makeDropId() {
   return `${networkState.userId || "local"}-${nextDropId++}`;
+}
+
+// Check if a position is within a locked area (and not owned by current player)
+function isPositionLocked(x, y) {
+  for (const lock of lockedAreas) {
+    const dist = Math.sqrt(Math.pow(x - lock.centerX, 2) + Math.pow(y - lock.centerY, 2));
+    if (dist <= lock.radius) {
+      // Check if this is the player's own lock
+      if (lock.userId === networkState.userId) return false;
+      return true; // Locked by another player
+    }
+  }
+  return false; // Not locked
 }
 
 const networkState = {
@@ -1082,6 +1096,12 @@ function tryPlace() {
   const plantKey = `${tx}:${ty}`;
   if (growingPlants.has(plantKey)) return;
 
+  // Check if position is locked by another player
+  if (isPositionLocked(tx, ty)) {
+    setAuthMessage("This area is locked by another player!");
+    return;
+  }
+
   const selectedItem = hotbarOrder[selectedSlot];
   if (!inventory[selectedItem] || inventory[selectedItem] < 1) return;
 
@@ -1767,6 +1787,22 @@ function connectSocket(token) {
       return;
     }
 
+    if (msg.type === "locked_areas") {
+      // Load all locked areas from server on world load
+      if (msg.locks && Array.isArray(msg.locks)) {
+        lockedAreas.length = 0; // Clear array
+        msg.locks.forEach(lock => {
+          lockedAreas.push({
+            userId: lock.userId,
+            centerX: lock.centerX,
+            centerY: lock.centerY,
+            radius: lock.radius || 10
+          });
+        });
+      }
+      return;
+    }
+
     if (msg.type === "drops") {
       // Full refresh of drops from server
       drops.clear();
@@ -1890,6 +1926,12 @@ function requestGrowingPlants() {
   }
 }
 
+function requestLockedAreas() {
+  if (ONLINE_MODE && networkState.connected) {
+    sendSocket({ type: "get_locked_areas" });
+  }
+}
+
 function requestDrops() {
   if (ONLINE_MODE && networkState.connected) {
     sendSocket({ type: "get_drops" });
@@ -1907,6 +1949,7 @@ async function setupAuthPanel() {
     loadGrowingPlants(); // Load saved plants for singleplayer
     gameplayUnlocked = true;
     requestGrowingPlants();
+    requestLockedAreas();
     requestDrops();
     return;
   }
@@ -1924,8 +1967,9 @@ async function setupAuthPanel() {
   if (!resumed) {
     redirectToLogin("Session expired. Please login again.");
   } else {
-    // Request growing plants when world loads
+    // Request growing plants and locked areas when world loads
     setTimeout(() => requestGrowingPlants(), 500);
+    setTimeout(() => requestLockedAreas(), 500);
     setTimeout(() => requestDrops(), 500);
   }
 }
