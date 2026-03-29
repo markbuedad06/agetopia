@@ -1228,7 +1228,8 @@ function calculateBlockDrop(tileType) {
   const adjustedRoll = (roll - nothingChance) / (1 - nothingChance);
   
   // Seed drop: high chance, slightly higher for low rarity
-  const seedChance = rarity <= 1 ? 0.65 : 0.5;
+  // Reduce seed drops across all blocks by 10 percentage points
+  const seedChance = Math.max(0, (rarity <= 1 ? 0.65 : 0.5) - 0.1);
   if (adjustedRoll < seedChance) {
     // Return seed version: tiles 1-6 map to seeds 9-14
     return tileType + 8;
