@@ -1099,12 +1099,12 @@ function tryBreak(dt) {
         const sourceBlock = plant.sourceBlock;
         const dropCount = plant.dropCount;
         
-        // Drop all the blocks with a tighter spread
+        // Drop all the blocks with a very small spread
         for (let i = 0; i < dropCount; i++) {
           const dropId = makeDropId();
           const angle = (i / dropCount) * Math.PI * 2;
-          const spread = 6; // reduce radial spawn distance
-          const speed = 100; // reduce launch speed for smaller explosion
+          const spread = 3; // tighter radial spawn distance
+          const speed = 60; // lower launch speed for minimal explosion
           const drop = {
             id: dropId,
             tile: sourceBlock,
@@ -1130,8 +1130,8 @@ function tryBreak(dt) {
             tile: seedItem,
             x: dropX,
             y: dropY,
-            vx: (Math.random() - 0.5) * 200,
-            vy: -150,
+            vx: (Math.random() - 0.5) * 120,
+            vy: -90,
             floatY: dropY,
             floatTime: 0,
           };
@@ -1154,8 +1154,8 @@ function tryBreak(dt) {
             tile: seedItem,
             x: dropX,
             y: dropY,
-            vx: (Math.random() - 0.5) * 200,
-            vy: -150,
+            vx: (Math.random() - 0.5) * 120,
+            vy: -90,
             floatY: dropY,
             floatTime: 0,
           });
@@ -1185,8 +1185,8 @@ function tryBreak(dt) {
           tile: dropItem,
           x: dropX,
           y: dropY,
-          vx: (Math.random() - 0.5) * 200,
-          vy: -150,
+          vx: (Math.random() - 0.5) * 100,
+          vy: -80,
           floatY: dropY,
           floatTime: 0,
         };
