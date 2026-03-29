@@ -253,7 +253,7 @@ function getGrowthTimeSeconds(rarity) {
 }
 
 function isSeedItem(itemId) {
-  return itemId >= 9 && itemId <= 14;
+  return (itemId >= 9 && itemId <= 14) || itemId === 17; // include lava seed
 }
 
 function getSeedGrowingTile(itemId) {
@@ -261,6 +261,8 @@ function getSeedGrowingTile(itemId) {
   if (itemId >= 9 && itemId <= 14) {
     return 100 + (itemId - 9);
   }
+  // Lava seed does not use a separate tile; growth stays on empty tile
+  if (itemId === 17) return null;
   return null;
 }
 
@@ -1113,8 +1115,8 @@ function tryBreak(dt) {
         }
         
         // Low chance to also drop 1 seed
-        if (Math.random() < 0.25) {
-          const seedItem = 8 + sourceBlock;
+        const seedItem = plant.seedItem ?? (sourceBlock === LAVA_TILE ? 17 : 8 + sourceBlock);
+        if (seedItem && Math.random() < 0.25) {
           const dropId = makeDropId();
           const drop = {
             id: dropId,
@@ -1137,8 +1139,8 @@ function tryBreak(dt) {
         const dropY = ty * TILE + TILE / 2;
         
         // 30% chance to drop a seed, 70% chance for nothing
-        if (Math.random() < 0.3) {
-          const seedItem = 8 + plant.sourceBlock; // Convert block to seed
+        const seedItem = plant.seedItem ?? (plant.sourceBlock === LAVA_TILE ? 17 : 8 + plant.sourceBlock);
+        if (seedItem && Math.random() < 0.3) {
           const dropId = nextDropId++;
           drops.set(dropId, {
             id: dropId,
@@ -1324,6 +1326,8 @@ function tryPlace() {
   // Handle seed planting vs block placement
   if (isSeedItem(selectedItem)) {
     // Plant seed - keep tile empty (0) and track in growingPlants map
+    const isLavaSeed = selectedItem === 17;
+    const sourceBlock = isLavaSeed ? LAVA_TILE : selectedItem - 8;
     const rarity = getItemRarity(selectedItem);
     const growthTime = getGrowthTimeSeconds(rarity);
     // Calculate random drop count based on rarity (higher rarity = more drops)
@@ -1334,7 +1338,8 @@ function tryPlace() {
       progress: 0, 
       totalTime: growthTime, 
       dropCount: dropCount,
-      sourceBlock: selectedItem - 8,
+      sourceBlock,
+      seedItem: isLavaSeed ? 17 : selectedItem,
       fullGrown: false,
       plantedAt: plantedAt
     });
@@ -1593,32 +1598,57 @@ function drawGrowingPlants() {
     const tileDef = tileDefs[tile];
     
     if (tileDef && plant.sourceBlock) {
-      const sourceTileDef = tileDefs[plant.sourceBlock];
-      const crownColor = sourceTileDef?.color || "#22c55e";
       const centerX = drawX + TILE / 2;
       const centerY = drawY + TILE / 2;
-      
-      // Draw single-block tree
-      const trunkHeight = 6;
-      const crownRadius = 6 + progress * 4;
-      
-      // Draw trunk
-      ctx.fillStyle = "#704214";
-      ctx.fillRect(centerX - 2, centerY + 2, 4, trunkHeight);
-      
-      // Draw crown (single circle that grows)
-      ctx.fillStyle = crownColor;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY - 2, crownRadius, 0, Math.PI * 2);
-      ctx.fill();
-      
-      // Add highlight
-      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-      ctx.beginPath();
-      ctx.arc(centerX - 2, centerY - 4, crownRadius / 3, 0, Math.PI * 2);
-      ctx.fill();
-      
-      // Draw timer above the tree
+
+      if (plant.sourceBlock === LAVA_TILE) {
+        // Lava growth: bubbling magma orb with pulse
+        const pulse = 0.35 + 0.65 * Math.sin(performance.now() / 220 + x * 0.1 + y * 0.1);
+        const radius = 6 + progress * 6 + pulse;
+        const innerRadius = Math.max(4, radius * 0.55);
+
+        const grd = ctx.createRadialGradient(centerX, centerY, innerRadius * 0.2, centerX, centerY, radius);
+        grd.addColorStop(0, "#ffd08a");
+        grd.addColorStop(0.45, "#ff7a3c");
+        grd.addColorStop(1, "#b62323");
+
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Rim glow
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius * 0.85, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        const sourceTileDef = tileDefs[plant.sourceBlock];
+        const crownColor = sourceTileDef?.color || "#22c55e";
+        
+        // Draw single-block tree
+        const trunkHeight = 6;
+        const crownRadius = 6 + progress * 4;
+        
+        // Draw trunk
+        ctx.fillStyle = "#704214";
+        ctx.fillRect(centerX - 2, centerY + 2, 4, trunkHeight);
+        
+        // Draw crown (single circle that grows)
+        ctx.fillStyle = crownColor;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY - 2, crownRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add highlight
+        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.beginPath();
+        ctx.arc(centerX - 2, centerY - 4, crownRadius / 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw timer above the plant
       const timerY = drawY - 8;
       let timerText = "";
       if (plant.fullGrown) {
@@ -1632,7 +1662,6 @@ function drawGrowingPlants() {
         ctx.fillStyle = "#60a5fa";
       }
       
-      // Draw timer text (no background)
       ctx.font = "bold 10px Arial";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
