@@ -977,98 +977,80 @@ wss.on("connection", async (ws, req) => {
     }
 
     if (msg.type === "player_move") {
-      if (typeof msg.x !== "number" || typeof msg.y !== "number") return;
-      player.x = msg.x;
-      player.y = msg.y;
-      player.facing = msg.facing === -1 ? -1 : 1;
-      // Do not change spawn position; players always spawn at door
-      await profilesDB.update(
-        { profileId },
-        { profileId, userId: player.userId, worldName },
-        { upsert: true }
-      );
-      broadcast({
-        type: "player_move",
-        id: player.id,
-        username: player.username,
-        x: player.x,
-        y: player.y,
-        facing: player.facing,
-        health: player.health,
-      }, player.id, worldName);
+      try {
+        if (typeof msg.x !== "number" || typeof msg.y !== "number") return;
+        player.x = msg.x;
+        player.y = msg.y;
+        player.facing = msg.facing === -1 ? -1 : 1;
+        // Do not change spawn position; players always spawn at door
+        await profilesDB.update(
+          { profileId },
+          { profileId, userId: player.userId, worldName },
+          { upsert: true }
+        );
+        broadcast({
+          type: "player_move",
+          id: player.id,
+          username: player.username,
+          x: player.x,
+          y: player.y,
+          facing: player.facing,
+          health: player.health,
+        }, player.id, worldName);
+      } catch (err) {
+        console.error("Error in player_move:", err);
+        send({ type: "error", message: "Player move failed" });
+      }
       return;
     }
 
     if (msg.type === "inventory_update") {
-      const inv = sanitizeInventory(msg.inventory);
-      await inventoriesDB.update(
-        { key: inventoryKey(player.userId) },
-        { key: inventoryKey(player.userId), userId: player.userId, inventory: inv, updatedAt: formatDateForMySQL() },
-        { upsert: true }
-      );
+      try {
+        const inv = sanitizeInventory(msg.inventory);
+        await inventoriesDB.update(
+          { key: inventoryKey(player.userId) },
+          { key: inventoryKey(player.userId), userId: player.userId, inventory: inv, updatedAt: formatDateForMySQL() },
+          { upsert: true }
+        );
+      } catch (err) {
+        console.error("Error in inventory_update:", err);
+        send({ type: "error", message: "Inventory update failed" });
+      }
       return;
     }
 
     if (msg.type === "punch_player") {
-      const targetId = String(msg.targetId || "");
-      const target = players.get(targetId);
-      if (!target || target.id === player.id || target.worldName !== worldName) return;
+      try {
+        const targetId = String(msg.targetId || "");
+        const target = players.get(targetId);
+        if (!target || target.id === player.id || target.worldName !== worldName) return;
 
-      const now = Date.now();
-      if (now - player.lastPunchAt < PUNCH_COOLDOWN_MS) return;
-      if (distance(player, target) > PUNCH_RANGE) return;
+        const now = Date.now();
+        if (now - player.lastPunchAt < PUNCH_COOLDOWN_MS) return;
+        if (distance(player, target) > PUNCH_RANGE) return;
 
-      player.lastPunchAt = now;
-      broadcast({ type: "punch", id: player.id, targetId: target.id }, null, worldName);
+        player.lastPunchAt = now;
+        broadcast({ type: "punch", id: player.id, targetId: target.id }, null, worldName);
 
-      const dx = (target.x + 12) - (player.x + 12);
-      const sign = dx === 0 ? player.facing : Math.sign(dx);
-      const knockVX = sign * KNOCKBACK_PUSH;
-      const knockVY = KNOCKBACK_LIFT;
-      const nudgeX = sign * 26;
-      const nudgeY = -8;
-      target.x += nudgeX;
-      target.y += nudgeY;
-      target.facing = sign;
+        const dx = (target.x + 12) - (player.x + 12);
+        const sign = dx === 0 ? player.facing : Math.sign(dx);
+        const knockVX = sign * KNOCKBACK_PUSH;
+        const knockVY = KNOCKBACK_LIFT;
+        const nudgeX = sign * 26;
+        const nudgeY = -8;
+        target.x += nudgeX;
+        target.y += nudgeY;
+        target.facing = sign;
 
-      broadcast({
-        type: "knockback",
-        id: player.id,
-        targetId: target.id,
-        vx: knockVX,
-        vy: knockVY,
-        dx: nudgeX,
-        dy: nudgeY,
-      }, null, worldName);
-      broadcast({
-        type: "player_move",
-        id: target.id,
-        username: target.username,
-        x: target.x,
-        y: target.y,
-        facing: target.facing,
-        health: target.health,
-      }, null, worldName);
-
-      target.health = Math.max(0, target.health - PUNCH_DAMAGE);
-      broadcast({ type: "health_update", id: target.id, health: target.health, maxHealth: target.maxHealth }, null, worldName);
-
-      if (target.health <= 0) {
-        target.health = MAX_HEALTH;
-        const tDoorX = Math.floor(WORLD_WIDTH / 2);
-        const tDoorBaseY = 46 + Math.floor(pseudoNoise(tDoorX) * 10);
-        target.x = tDoorX * TILE;
-        target.y = (tDoorBaseY - 2) * TILE;
-        target.facing = 1;
-
-        await profilesDB.update(
-          { profileId: profileKey(target.userId, worldName) },
-          { profileId: profileKey(target.userId, worldName), userId: target.userId, worldName, spawnX: target.x, spawnY: target.y },
-          { upsert: true }
-        );
-
-        broadcast({ type: "respawn", id: target.id, x: target.x, y: target.y, health: target.health }, null, worldName);
-        broadcast({ type: "health_update", id: target.id, health: target.health, maxHealth: target.maxHealth }, null, worldName);
+        broadcast({
+          type: "knockback",
+          id: player.id,
+          targetId: target.id,
+          vx: knockVX,
+          vy: knockVY,
+          dx: nudgeX,
+          dy: nudgeY,
+        }, null, worldName);
         broadcast({
           type: "player_move",
           id: target.id,
@@ -1078,170 +1060,228 @@ wss.on("connection", async (ws, req) => {
           facing: target.facing,
           health: target.health,
         }, null, worldName);
+
+        target.health = Math.max(0, target.health - PUNCH_DAMAGE);
+        broadcast({ type: "health_update", id: target.id, health: target.health, maxHealth: target.maxHealth }, null, worldName);
+
+        if (target.health <= 0) {
+          target.health = MAX_HEALTH;
+          const tDoorX = Math.floor(WORLD_WIDTH / 2);
+          const tDoorBaseY = 46 + Math.floor(pseudoNoise(tDoorX) * 10);
+          target.x = tDoorX * TILE;
+          target.y = (tDoorBaseY - 2) * TILE;
+          target.facing = 1;
+
+          await profilesDB.update(
+            { profileId: profileKey(target.userId, worldName) },
+            { profileId: profileKey(target.userId, worldName), userId: target.userId, worldName, spawnX: target.x, spawnY: target.y },
+            { upsert: true }
+          );
+
+          broadcast({ type: "respawn", id: target.id, x: target.x, y: target.y, health: target.health }, null, worldName);
+          broadcast({ type: "health_update", id: target.id, health: target.health, maxHealth: target.maxHealth }, null, worldName);
+          broadcast({
+            type: "player_move",
+            id: target.id,
+            username: target.username,
+            x: target.x,
+            y: target.y,
+            facing: target.facing,
+            health: target.health,
+          }, null, worldName);
+        }
+      } catch (err) {
+        console.error("Error in punch_player:", err);
+        send({ type: "error", message: "Punch failed" });
       }
       return;
     }
 
     if (msg.type === "block_update") {
-      const x = Number(msg.x);
-      const y = Number(msg.y);
-      const tile = Number(msg.tile);
-      if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(tile)) return;
-      if (!inBounds(x, y)) return;
-      
-      const doorX = Math.floor(WORLD_WIDTH / 2);
-      const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
-      const isDoorTile = (x === doorX && y === doorBaseY);
-      if (isDoorTile) return;  // Prevent breaking/placing on door
-      
-      if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE)) return;  // Allow tiles 0-6 and land_lock(15)
+      try {
+        const x = Number(msg.x);
+        const y = Number(msg.y);
+        const tile = Number(msg.tile);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(tile)) return;
+        if (!inBounds(x, y)) return;
+        
+        const doorX = Math.floor(WORLD_WIDTH / 2);
+        const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
+        const isDoorTile = (x === doorX && y === doorBaseY);
+        if (isDoorTile) return;  // Prevent breaking/placing on door
+        
+        if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE)) return;  // Allow tiles 0-6 and land_lock(15)
 
-      // Check world ownership before allowing any placement/breaking
-      const worldOwner = await getWorldOwner(worldName);
-      if (worldOwner && worldOwner !== player.userId) {
-        // World is owned by another player - they can only walk around
-        send({ type: "error", message: "This world is owned by another player" });
-        return;
-      }
-
-      // Check if position is locked (and player is not the owner)
-      const isLocked = await isPositionLocked(worldName, x, y, player.userId);
-      if (isLocked && tile !== 0) {
-        // Trying to place a block in a locked area - reject
-        send({ type: "error", message: "This area is locked by another player" });
-        return;
-      }
-
-      const world = getOrCreateWorldArray(worldName);
-      const oldTile = world[indexOf(x, y)];
-      
-      // Handle land_lock placement/removal
-      if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
-        // Placing land_lock - claim the world if not already owned
-        const claimed = await setWorldOwner(worldName, player.userId);
-        if (!claimed && worldOwner !== player.userId) {
-          send({ type: "error", message: "This world has already been claimed" });
+        // Check world ownership before allowing any placement/breaking
+        const worldOwner = await getWorldOwner(worldName);
+        if (worldOwner && worldOwner !== player.userId) {
+          // World is owned by another player - they can only walk around
+          send({ type: "error", message: "This world is owned by another player" });
           return;
         }
-        // Create a lock around this land_lock
-        await createLock(worldName, x, y, player.userId);
-      } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
-        // Removing land_lock - remove the lock
-        await removeLock(worldName, x, y);
-      }
-      
-      world[indexOf(x, y)] = tile;
-      if (tile === 0) {
-        await worldDB.remove({ key: blockKey(worldName, x, y) }, { multi: true });
-      } else {
-        await worldDB.update(
-          { key: blockKey(worldName, x, y) },
-          { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: formatDateForMySQL() },
-          { upsert: true }
-        );
-      }
 
-      broadcast({ type: "block_update", x, y, tile }, null, worldName);
+        // Check if position is locked (and player is not the owner)
+        const isLocked = await isPositionLocked(worldName, x, y, player.userId);
+        if (isLocked && tile !== 0) {
+          // Trying to place a block in a locked area - reject
+          send({ type: "error", message: "This area is locked by another player" });
+          return;
+        }
+
+        const world = getOrCreateWorldArray(worldName);
+        const oldTile = world[indexOf(x, y)];
+        
+        // Handle land_lock placement/removal
+        if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
+          // Placing land_lock - claim the world if not already owned
+          const claimed = await setWorldOwner(worldName, player.userId);
+          if (!claimed && worldOwner !== player.userId) {
+            send({ type: "error", message: "This world has already been claimed" });
+            return;
+          }
+          // Create a lock around this land_lock
+          await createLock(worldName, x, y, player.userId);
+        } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
+          // Removing land_lock - remove the lock
+          await removeLock(worldName, x, y);
+        }
+        
+        world[indexOf(x, y)] = tile;
+        if (tile === 0) {
+          await worldDB.remove({ key: blockKey(worldName, x, y) }, { multi: true });
+        } else {
+          await worldDB.update(
+            { key: blockKey(worldName, x, y) },
+            { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: formatDateForMySQL() },
+            { upsert: true }
+          );
+        }
+
+        broadcast({ type: "block_update", x, y, tile }, null, worldName);
+      } catch (err) {
+        console.error("Error in block_update:", err);
+        send({ type: "error", message: "Block update failed" });
+      }
     }
 
     if (msg.type === "plant_seed") {
-      const x = Number(msg.x);
-      const y = Number(msg.y);
-      if (!Number.isInteger(x) || !Number.isInteger(y)) return;
-      if (!inBounds(x, y)) return;
+      try {
+        const x = Number(msg.x);
+        const y = Number(msg.y);
+        if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+        if (!inBounds(x, y)) return;
 
-      // Check world ownership before allowing seed planting
-      const worldOwner = await getWorldOwner(worldName);
-      if (worldOwner && worldOwner !== player.userId) {
-        send({ type: "error", message: "This world is owned by another player" });
-        return;
-      }
+        // Check world ownership before allowing seed planting
+        const worldOwner = await getWorldOwner(worldName);
+        if (worldOwner && worldOwner !== player.userId) {
+          send({ type: "error", message: "This world is owned by another player" });
+          return;
+        }
 
-      // Check if position is locked
-      const isLocked = await isPositionLocked(worldName, x, y, player.userId);
-      if (isLocked) {
-        send({ type: "error", message: "This area is locked by another player" });
-        return;
-      }
+        // Check if position is locked
+        const isLocked = await isPositionLocked(worldName, x, y, player.userId);
+        if (isLocked) {
+          send({ type: "error", message: "This area is locked by another player" });
+          return;
+        }
 
-      const key = plantKey(worldName, x, y);
-      console.log(`[${worldName}] Plant seed at ${x},${y} (rarity=${msg.sourceBlock}) - time: ${msg.totalTime}s`);
-      await growingPlantsDB.update(
-        { key },
-        {
-          key,
-          worldName,
+        const key = plantKey(worldName, x, y);
+        console.log(`[${worldName}] Plant seed at ${x},${y} (rarity=${msg.sourceBlock}) - time: ${msg.totalTime}s`);
+        await growingPlantsDB.update(
+          { key },
+          {
+            key,
+            worldName,
+            x,
+            y,
+            sourceBlock: msg.sourceBlock,
+            dropCount: msg.dropCount,
+            totalTime: msg.totalTime,
+            plantedAt: msg.plantedAt,
+            fullGrown: false,
+            createdAt: formatDateForMySQL()
+          },
+          { upsert: true }
+        );
+
+        // Broadcast to all players in world
+        broadcast({
+          type: "plant_seed",
           x,
           y,
           sourceBlock: msg.sourceBlock,
           dropCount: msg.dropCount,
           totalTime: msg.totalTime,
-          plantedAt: msg.plantedAt,
-          fullGrown: false,
-          createdAt: formatDateForMySQL()
-        },
-        { upsert: true }
-      );
-
-      // Broadcast to all players in world
-      broadcast({
-        type: "plant_seed",
-        x,
-        y,
-        sourceBlock: msg.sourceBlock,
-        dropCount: msg.dropCount,
-        totalTime: msg.totalTime,
-        plantedAt: msg.plantedAt
-      }, null, worldName);
+          plantedAt: msg.plantedAt
+        }, null, worldName);
+      } catch (err) {
+        console.error("Error in plant_seed:", err);
+        send({ type: "error", message: "Planting failed" });
+      }
     }
 
     if (msg.type === "destroy_plant") {
-      const x = Number(msg.x);
-      const y = Number(msg.y);
-      if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+      try {
+        const x = Number(msg.x);
+        const y = Number(msg.y);
+        if (!Number.isInteger(x) || !Number.isInteger(y)) return;
 
-      const key = plantKey(worldName, x, y);
-      await growingPlantsDB.remove({ key }, { multi: true });
+        const key = plantKey(worldName, x, y);
+        await growingPlantsDB.remove({ key }, { multi: true });
 
-      // Broadcast to all players in world
-      broadcast({
-        type: "destroy_plant",
-        x,
-        y
-      }, null, worldName);
+        // Broadcast to all players in world
+        broadcast({
+          type: "destroy_plant",
+          x,
+          y
+        }, null, worldName);
+      } catch (err) {
+        console.error("Error in destroy_plant:", err);
+        send({ type: "error", message: "Plant destruction failed" });
+      }
     }
 
     if (msg.type === "get_growing_plants") {
-      const plants = await growingPlantsDB.find({ worldName });
-      const plantsList = plants.map(p => ({
-        x: p.x,
-        y: p.y,
-        sourceBlock: p.sourceBlock,
-        dropCount: p.dropCount,
-        totalTime: p.totalTime,
-        plantedAt: p.plantedAt,
-        fullGrown: p.fullGrown
-      }));
+      try {
+        const plants = await growingPlantsDB.find({ worldName });
+        const plantsList = plants.map(p => ({
+          x: p.x,
+          y: p.y,
+          sourceBlock: p.sourceBlock,
+          dropCount: p.dropCount,
+          totalTime: p.totalTime,
+          plantedAt: p.plantedAt,
+          fullGrown: p.fullGrown
+        }));
 
-      ws.send(JSON.stringify({
-        type: "growing_plants",
-        plants: plantsList
-      }));
+        ws.send(JSON.stringify({
+          type: "growing_plants",
+          plants: plantsList
+        }));
+      } catch (err) {
+        console.error("Error in get_growing_plants:", err);
+        send({ type: "error", message: "Failed to fetch plants" });
+      }
     }
 
     if (msg.type === "get_locked_areas") {
-      const locks = await lockedAreasDB.find({ worldName });
-      const locksList = locks.map(lock => ({
-        userId: lock.userId,
-        centerX: lock.centerX,
-        centerY: lock.centerY,
-        radius: lock.radius
-      }));
+      try {
+        const locks = await lockedAreasDB.find({ worldName });
+        const locksList = locks.map(lock => ({
+          userId: lock.userId,
+          centerX: lock.centerX,
+          centerY: lock.centerY,
+          radius: lock.radius
+        }));
 
-      ws.send(JSON.stringify({
-        type: "locked_areas",
-        locks: locksList
-      }));
+        ws.send(JSON.stringify({
+          type: "locked_areas",
+          locks: locksList
+        }));
+      } catch (err) {
+        console.error("Error in get_locked_areas:", err);
+        send({ type: "error", message: "Failed to fetch locked areas" });
+      }
     }
 
     if (msg.type === "get_drops") {
