@@ -701,26 +701,44 @@ async function getWorldOwner(worldName) {
 
 // Set world owner (first player to place land_lock claims the world)
 async function setWorldOwner(worldName, userId) {
-  // Only set if not already owned
-  const existing = await getWorldOwner(worldName);
-  if (existing && existing !== userId) {
-    return false; // World already claimed by someone else
-  }
-  
-  await worldOwnersDB.insert({
-    worldName,
-    userId,
-  });
+  try {
+    // Only set if not already owned
+    const existing = await getWorldOwner(worldName);
+    if (existing && existing !== userId) {
+      return false; // World already claimed by someone else
+    }
+    
+    console.log(`Setting world owner for ${worldName} to ${userId}`);
+    await worldOwnersDB.insert({
+      worldName,
+      userId,
+    });
+    console.log(`Updated worldOwnersDB for ${worldName}`);
 
-  // Also create/update in worlds table
-  await worldsDB.insert({
-    worldName,
-    userId,
-  });
-  
-  // Update cache
-  worldOwnersCache.set(worldName, userId);
-  return true; // Successfully claimed
+    // Also update in worlds table - use UPDATE directly to preserve existing data
+    const existing_world = await worldsDB.findOne({ worldName }).catch(() => null);
+    if (existing_world) {
+      console.log(`Updating existing worlds entry for ${worldName}`);
+      await pool.query(
+        "UPDATE worlds SET userId=?, updatedAt=? WHERE worldName=?",
+        [userId, formatDateForMySQL(), worldName]
+      );
+    } else {
+      console.log(`Creating new worlds entry for ${worldName}`);
+      await worldsDB.insert({
+        worldName,
+        userId,
+      });
+    }
+    console.log(`Updated worldsDB for ${worldName}`);
+    
+    // Update cache
+    worldOwnersCache.set(worldName, userId);
+    return true; // Successfully claimed
+  } catch (err) {
+    console.error(`Error in setWorldOwner(${worldName}, ${userId}):`, err);
+    throw err;
+  }
 }
 
 function createToken(user) {
@@ -1263,25 +1281,42 @@ wss.on("connection", async (ws, req) => {
         
         // Handle land_lock placement/removal
         if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
-          // Placing land_lock - claim the world if not already owned
-          const claimed = await setWorldOwner(worldName, player.id);
-          if (!claimed && worldOwner !== player.id) {
-            send({ type: "error", message: "This world has already been claimed" });
+          try {
+            // Placing land_lock - claim the world if not already owned
+            console.log(`[${worldName}] Player ${player.id} (${player.username}) placing land_lock at ${x},${y}`);
+            const claimed = await setWorldOwner(worldName, player.id);
+            console.log(`[${worldName}] setWorldOwner result: ${claimed}`);
+            
+            if (!claimed && worldOwner !== player.id) {
+              console.log(`[${worldName}] World already claimed by ${worldOwner}`);
+              send({ type: "error", message: "This world has already been claimed" });
+              return;
+            }
+            
+            // Create a lock around this land_lock
+            console.log(`[${worldName}] Creating lock at ${x},${y}`);
+            await createLock(worldName, x, y, player.id);
+            
+            // Broadcast world owner info to all players in world
+            console.log(`[${worldName}] Claimed by player ${player.id} (${player.username})`);
+            broadcast({ 
+              type: "world_owner_set", 
+              userId: player.id,
+              username: player.username
+            }, null, worldName);
+          } catch (lockErr) {
+            console.error(`[${worldName}] Error placing land_lock at ${x},${y}:`, lockErr);
+            send({ type: "error", message: "Failed to place lock: " + (lockErr.message || "Unknown error") });
             return;
           }
-          // Create a lock around this land_lock
-          await createLock(worldName, x, y, player.id);
-          
-          // Broadcast world owner info to all players in world
-          console.log(`[${worldName}] Claimed by player ${player.id} (${player.username})`);
-          broadcast({ 
-            type: "world_owner_set", 
-            userId: player.id,
-            username: player.username
-          }, null, worldName);
         } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
-          // Removing land_lock - remove the lock
-          await removeLock(worldName, x, y);
+          try {
+            // Removing land_lock - remove the lock
+            console.log(`[${worldName}] Removing lock at ${x},${y}`);
+            await removeLock(worldName, x, y);
+          } catch (lockErr) {
+            console.error(`[${worldName}] Error removing lock at ${x},${y}:`, lockErr);
+          }
         }
         
         world[indexOf(x, y)] = tile;
