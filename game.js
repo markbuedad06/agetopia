@@ -2416,27 +2416,34 @@ function drawDrops() {
     const isSeed = drop.tile >= 9 && drop.tile <= 14;
     
     if (isSeed) {
-      // Draw seeds as ovals; lava seeds get a hotter gradient and darker rim
-      const width = 14;
-      const height = 20;
-      if (drop.tile === 17) {
-        const grad = ctx.createLinearGradient(px, py - 10 + bobOffset, px, py + 10 + bobOffset);
-        grad.addColorStop(0, "#ffb25c");
-        grad.addColorStop(0.6, "#f46b2d");
-        grad.addColorStop(1, "#b71c1c");
-        ctx.fillStyle = grad;
+      // Prefer icon if present (avoids lava seed looking like a block)
+      const iconImg = def.icon ? getTexture(def.icon) : null;
+      if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) {
+        const size = 20;
+        ctx.drawImage(iconImg, px - size / 2, py - size / 2 + bobOffset, size, size);
       } else {
-        ctx.fillStyle = def.color;
+        // Draw seeds as ovals; lava seeds get a hotter gradient and darker rim
+        const width = 14;
+        const height = 20;
+        if (drop.tile === 17) {
+          const grad = ctx.createLinearGradient(px, py - 10 + bobOffset, px, py + 10 + bobOffset);
+          grad.addColorStop(0, "#ffb25c");
+          grad.addColorStop(0.6, "#f46b2d");
+          grad.addColorStop(1, "#b71c1c");
+          ctx.fillStyle = grad;
+        } else {
+          ctx.fillStyle = def.color;
+        }
+        ctx.beginPath();
+        ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.strokeStyle = drop.tile === 17 ? "#5b0c0c" : "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
+        ctx.stroke();
       }
-      ctx.beginPath();
-      ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      
-      ctx.strokeStyle = drop.tile === 17 ? "#5b0c0c" : "rgba(255,255,255,0.5)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
-      ctx.stroke();
     } else {
       // Draw blocks as squares
       const size = 20;
