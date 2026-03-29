@@ -213,7 +213,7 @@ async function ensureSchema() {
 
   await pool.query(`CREATE TABLE IF NOT EXISTS worlds (
     worldName VARCHAR(64) PRIMARY KEY,
-    userId VARCHAR(191) NOT NULL,
+    userId VARCHAR(191),
     doorX INT DEFAULT 120,
     doorY INT DEFAULT 45,
     blocksData JSON,
@@ -469,7 +469,18 @@ function makeWorldsRepo() {
       const worldName = query.worldName;
       if (!worldName) return undefined;
       const [rows] = await pool.query("SELECT worldName, userId, doorX, doorY, blocksData, createdAt, updatedAt FROM worlds WHERE worldName = ? LIMIT 1", [worldName]);
-      return rows[0];
+      if (!rows[0]) return undefined;
+      const row = rows[0];
+      // Parse blocksData if it exists
+      if (row.blocksData) {
+        try {
+          row.blocksData = typeof row.blocksData === 'string' ? JSON.parse(row.blocksData) : row.blocksData;
+        } catch (err) {
+          console.error(`Error parsing blocksData for world ${worldName}:`, err);
+          row.blocksData = null;
+        }
+      }
+      return row;
     },
     insert: async (doc) => {
       const createdAt = doc.createdAt || formatDateForMySQL();
@@ -808,26 +819,30 @@ async function applyPersistedBlocks(worldName, world) {
 }
 
 async function syncBlocksToWorldsTable(worldName) {
-  // Get all blocks for this world from world_blocks table
-  const blocks = await worldDB.find({ worldName });
-  
-  // Store blocks data in worlds table
-  if (blocks.length > 0) {
-    const blocksData = blocks.map(b => ({
-      x: b.x,
-      y: b.y,
-      tile: b.tile
-    }));
+  try {
+    // Get all blocks for this world from world_blocks table
+    const blocks = await worldDB.find({ worldName });
     
-    await worldsDB.update(
-      { worldName },
-      { 
-        worldName,
-        blocksData
+    // Store blocks data in worlds table
+    if (blocks.length > 0) {
+      const blocksData = blocks.map(b => ({
+        x: b.x,
+        y: b.y,
+        tile: b.tile
+      }));
+      
+      // Get existing world entry to preserve other data
+      const existing = await worldsDB.findOne({ worldName }).catch(() => null);
+      if (existing) {
+        // Update existing entry with new blocks
+        await pool.query(
+          "UPDATE worlds SET blocksData=?, updatedAt=? WHERE worldName=?",
+          [JSON.stringify(blocksData), formatDateForMySQL(), worldName]
+        );
       }
-    ).catch(() => {
-      // World might not exist yet, that's ok
-    });
+    }
+  } catch (err) {
+    console.error("Error syncing blocks to worlds table:", err);
   }
 }
 
@@ -988,13 +1003,17 @@ wss.on("connection", async (ws, req) => {
     worldCache_entry.loaded = true;
   }
 
-  // Ensure world exists in worlds table (create with default owner if new)
-  const existingWorld = await worldsDB.findOne({ worldName });
+  // Ensure world exists in worlds table (create with NULL owner if new)
+  const existingWorld = await worldsDB.findOne({ worldName }).catch(() => null);
   if (!existingWorld) {
-    await worldsDB.insert({
-      worldName,
-      userId: "", // Will be set when someone places land_lock
-    });
+    try {
+      await worldsDB.insert({
+        worldName,
+        userId: null, // Will be set when someone places land_lock
+      });
+    } catch (err) {
+      console.error(`Error creating world entry for ${worldName}:`, err);
+    }
   }
 
   const others = [];
