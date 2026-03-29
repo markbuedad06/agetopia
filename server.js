@@ -191,8 +191,6 @@ async function ensureSchema() {
     UNIQUE INDEX inv_user_idx (userId)
   )`);
 
-  // Drop old locked_areas table with INT userId and recreate with VARCHAR
-  await pool.query(`DROP TABLE IF EXISTS locked_areas`);
   await pool.query(`CREATE TABLE IF NOT EXISTS locked_areas (
     ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
     worldName VARCHAR(64) NOT NULL,
@@ -205,8 +203,6 @@ async function ensureSchema() {
     INDEX lock_user_idx (userId)
   )`);
 
-  // Drop old world_owners table with INT userId and recreate with VARCHAR
-  await pool.query(`DROP TABLE IF EXISTS world_owners`);
   await pool.query(`CREATE TABLE IF NOT EXISTS world_owners (
     worldName VARCHAR(64) PRIMARY KEY,
     userId VARCHAR(191) NOT NULL,
