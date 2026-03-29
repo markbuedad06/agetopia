@@ -228,8 +228,8 @@ body {
 
 .chat-toggle {
   position: fixed;
-  top: 14px;
-  left: 14px;
+  top: 16px;
+  left: 16px;
   padding: 0.65rem 0.95rem;
   border-radius: 14px;
   font-weight: 700;
@@ -240,6 +240,7 @@ body {
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   pointer-events: auto;
+  z-index: 60;
 }
 
 .chat-bar {
