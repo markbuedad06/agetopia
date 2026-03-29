@@ -717,6 +717,23 @@ body {
   margin-top: 0.1rem;
 }
 
+.inventory-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.menu-item.secondary {
+  background: #253147;
+  border-color: #3c5a89;
+}
+
+.slot.selected-drop {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 1px var(--accent-2) inset;
+}
+
 /* Mobile Controls */
 .mobile-controls {
   position: fixed;

@@ -76,7 +76,20 @@
     <div id="inventoryModal" class="inventory-modal hidden" role="dialog" aria-label="Full Inventory">
       <h3>Full Inventory</h3>
       <div id="inventory" class="inventory"></div>
-      <button id="inventoryCloseBtn" type="button" class="menu-item">Close</button>
+      <div class="inventory-actions">
+        <button id="dropBtn" type="button" class="menu-item secondary">Drop</button>
+        <button id="inventoryCloseBtn" type="button" class="menu-item">Close</button>
+      </div>
+    </div>
+
+    <div id="dropModal" class="inventory-modal hidden" role="dialog" aria-label="Drop Items">
+      <h3>Drop Items</h3>
+      <p id="dropItemLabel">Select an item to drop.</p>
+      <input id="dropAmountInput" type="number" min="1" step="1" value="1" aria-label="Amount to drop" />
+      <div class="inventory-actions">
+        <button id="dropConfirmBtn" type="button" class="menu-item secondary">Confirm</button>
+        <button id="dropCancelBtn" type="button" class="menu-item">Cancel</button>
+      </div>
     </div>
   </div>
   <script src="game.js"></script>

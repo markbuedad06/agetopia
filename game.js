@@ -7,6 +7,12 @@ const btnPunch = document.getElementById("btnPunch");
 const inventoryExpandBtn = document.getElementById("inventoryExpandBtn");
 const inventoryModal = document.getElementById("inventoryModal");
 const inventoryCloseBtn = document.getElementById("inventoryCloseBtn");
+const dropBtn = document.getElementById("dropBtn");
+const dropModal = document.getElementById("dropModal");
+const dropAmountInput = document.getElementById("dropAmountInput");
+const dropConfirmBtn = document.getElementById("dropConfirmBtn");
+const dropCancelBtn = document.getElementById("dropCancelBtn");
+const dropItemLabel = document.getElementById("dropItemLabel");
 const gemCountEl = document.getElementById("gemCount");
 const authMessageEl = document.getElementById("authMessage");
 const onlineStateEl = document.getElementById("onlineState");
@@ -131,6 +137,7 @@ const growingPlants = new Map(); // Track growing seeds: "x:y" -> { progress, to
 const lockedAreas = []; // Array of locked areas: { userId, centerX, centerY, radius }
 const chatBubbles = new Map(); // playerId -> { text, expiresAt, username }
 let nextDropId = 1;
+let selectedInventoryTile = null;
 
 function makeDropId() {
   return `${networkState.userId || "local"}-${nextDropId++}`;
@@ -672,6 +679,7 @@ function setupMenuInteractions() {
 
   inventoryCloseBtn?.addEventListener("click", () => {
     inventoryModal?.classList.add("hidden");
+    dropModal?.classList.add("hidden");
     saveInventoryState();
   });
 
@@ -698,12 +706,52 @@ function setupMenuInteractions() {
       if (!slot) return;
       
       const slotIndex = Number(slot.getAttribute("data-slot-index"));
-      if (isNaN(slotIndex) || slotIndex < 0 || slotIndex >= hotbarOrder.length) return;
-      
-      selectedSlot = slotIndex;
+      const tileAttr = Number(slot.getAttribute("data-tile"));
+      if (!Number.isNaN(slotIndex) && slotIndex >= 0 && slotIndex < hotbarOrder.length) {
+        selectedSlot = slotIndex;
+        selectedInventoryTile = hotbarOrder[slotIndex];
+      } else if (!Number.isNaN(tileAttr)) {
+        selectedInventoryTile = tileAttr;
+      }
       updateHUD();
     });
   }
+
+  // Drop button handlers
+  dropBtn?.addEventListener("click", () => {
+    if (selectedInventoryTile === null) {
+      setAuthMessage("Select an item first");
+      return;
+    }
+    const count = inventory[selectedInventoryTile] || 0;
+    if (count <= 0) {
+      setAuthMessage("No items to drop");
+      return;
+    }
+    if (dropItemLabel) {
+      const name = (itemDefs[selectedInventoryTile] || tileDefs[selectedInventoryTile] || {}).name || "Item";
+      dropItemLabel.textContent = `${name} available: ${count}`;
+    }
+    if (dropAmountInput) {
+      dropAmountInput.value = "1";
+      dropAmountInput.max = String(count);
+      dropAmountInput.focus();
+      dropAmountInput.select();
+    }
+    dropModal?.classList.remove("hidden");
+  });
+
+  const closeDropModal = () => {
+    dropModal?.classList.add("hidden");
+  };
+
+  dropCancelBtn?.addEventListener("click", closeDropModal);
+
+  dropConfirmBtn?.addEventListener("click", () => {
+    const raw = dropAmountInput ? Number(dropAmountInput.value) : 0;
+    performDrop(raw);
+    closeDropModal();
+  });
 }
 
 function setupChatUI() {
@@ -1352,6 +1400,48 @@ function tryPlace() {
   }
 }
 
+function performDrop(requestedAmount) {
+  if (selectedInventoryTile === null) {
+    setAuthMessage("Select an item to drop");
+    return;
+  }
+  const available = inventory[selectedInventoryTile] || 0;
+  const parsed = Number.isFinite(requestedAmount) ? Math.floor(requestedAmount) : 0;
+  const amount = Math.max(1, Math.min(available, parsed));
+  if (available <= 0 || amount <= 0) {
+    setAuthMessage("No items to drop");
+    return;
+  }
+
+  const facing = player.facing || 1;
+  const baseX = player.x + player.w * 0.5 + facing * 20;
+  const baseY = player.y + player.h * 0.7;
+
+  for (let i = 0; i < amount; i++) {
+    const dropId = makeDropId();
+    const drop = {
+      id: dropId,
+      tile: selectedInventoryTile,
+      x: baseX + (Math.random() - 0.5) * 6,
+      y: baseY + (Math.random() - 0.5) * 6,
+      vx: facing * 80 + (Math.random() - 0.5) * 40,
+      vy: -80 + (Math.random() - 0.5) * 30,
+      floatY: baseY,
+      floatTime: 0,
+    };
+    drops.set(dropId, drop);
+    if (ONLINE_MODE && networkState.connected) {
+      sendSocket({ type: "drop_spawn", ...drop });
+    }
+  }
+
+  inventory[selectedInventoryTile] = available - amount;
+  saveInventoryItems();
+  updateHUD();
+  const name = (itemDefs[selectedInventoryTile] || tileDefs[selectedInventoryTile] || {}).name || "Item";
+  setAuthMessage(`Dropped ${amount} ${name}`);
+}
+
 function updateCamera() {
   const targetX = player.x + player.w * 0.5 - canvas.width * 0.5;
   const targetY = player.y + player.h * 0.5 - canvas.height * 0.5;
@@ -1774,7 +1864,8 @@ function renderFullInventory() {
 
     const item = itemDefs[tile];
     const slot = document.createElement("div");
-    slot.className = `slot ${idx === selectedSlot ? "active" : ""}`;
+    const selectedClass = selectedInventoryTile === tile ? "selected-drop" : "";
+    slot.className = `slot ${idx === selectedSlot ? "active" : ""} ${selectedClass}`;
     slot.setAttribute("data-slot-index", String(idx));
     slot.setAttribute("data-tile", String(tile));
     slot.style.borderBottom = `4px solid ${item.color}`;
@@ -1817,7 +1908,8 @@ function renderFullInventory() {
     if (!item) return;
 
     const slot = document.createElement("div");
-    slot.className = "slot loot";
+    const selectedClass = selectedInventoryTile === itemId ? "selected-drop" : "";
+    slot.className = `slot loot ${selectedClass}`;
     slot.setAttribute("data-tile", String(itemId));
     slot.style.borderBottom = `4px solid ${item.color}`;
     slot.style.cursor = "default";
