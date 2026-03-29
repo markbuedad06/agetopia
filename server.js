@@ -1123,22 +1123,26 @@ wss.on("connection", async (ws, req) => {
         
         if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE)) return;  // Allow tiles 0-6 and land_lock(15)
 
-        // Check world ownership before allowing any placement/breaking
+        // Check world ownership - owner can build anywhere, non-owners can't build in owned worlds
         const worldOwner = await getWorldOwner(worldName);
-        if (worldOwner && worldOwner !== player.userId) {
-          // World is owned by another player - they can only walk around
+        const isOwner = worldOwner && worldOwner === player.userId;
+        
+        if (worldOwner && !isOwner) {
+          // World is owned by another player - reject
           send({ type: "error", message: "This world is owned by another player" });
           return;
         }
 
-        // Check if position is locked (and player is not the owner)
-        const isLocked = await isPositionLocked(worldName, x, y, player.userId);
-        if (isLocked && tile !== 0) {
-          // Trying to place a block in a locked area - reject
-          send({ type: "error", message: "This area is locked by another player" });
+        // If world has no owner yet and trying to place land_lock, that's allowed (will claim it)
+        // If world has owner and player is owner, they can place anywhere (skip lock check)
+        if (!isOwner && worldOwner !== null) {
+          // This shouldn't happen since we already rejected non-owners above
+          send({ type: "error", message: "Cannot build in this world" });
           return;
         }
 
+        // For the actual placement, owner doesn't need lock checks
+        // Only check locks if no owner yet (shouldn't reach here due to earlier check)
         const world = getOrCreateWorldArray(worldName);
         const oldTile = world[indexOf(x, y)];
         
@@ -1189,17 +1193,12 @@ wss.on("connection", async (ws, req) => {
         if (!Number.isInteger(x) || !Number.isInteger(y)) return;
         if (!inBounds(x, y)) return;
 
-        // Check world ownership before allowing seed planting
+        // Check world ownership - only owner can plant seeds
         const worldOwner = await getWorldOwner(worldName);
-        if (worldOwner && worldOwner !== player.userId) {
-          send({ type: "error", message: "This world is owned by another player" });
-          return;
-        }
-
-        // Check if position is locked
-        const isLocked = await isPositionLocked(worldName, x, y, player.userId);
-        if (isLocked) {
-          send({ type: "error", message: "This area is locked by another player" });
+        const isOwner = worldOwner && worldOwner === player.userId;
+        
+        if (worldOwner && !isOwner) {
+          send({ type: "error", message: "Only the world owner can plant seeds" });
           return;
         }
 

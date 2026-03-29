@@ -882,7 +882,8 @@ function tryBreak(dt) {
   }
 
   // Check world ownership - only owner can break
-  if (worldOwner && networkState.userId !== worldOwner.userId) {
+  const isOwner = worldOwner && networkState.userId === worldOwner.userId;
+  if (worldOwner && !isOwner) {
     breakState.progress = 0;
     breakState.targetX = -1;
     breakState.targetY = -1;
@@ -1096,12 +1097,6 @@ function tryPlace() {
   const plantKey = `${tx}:${ty}`;
   if (growingPlants.has(plantKey)) return;
 
-  // Check if position is locked by another player
-  if (isPositionLocked(tx, ty)) {
-    setAuthMessage("This area is locked by another player!");
-    return;
-  }
-
   const selectedItem = hotbarOrder[selectedSlot];
   if (!inventory[selectedItem] || inventory[selectedItem] < 1) return;
 
@@ -1116,20 +1111,20 @@ function tryPlace() {
     return;
   }
 
-  // Check world ownership
   const isLandLock = selectedItem === 15; // Land lock block ID
-  if (worldOwner && !isLandLock) {
-    // World has owner and not placing land lock - only owner can place
-    if (networkState.userId !== worldOwner.userId) {
-      setAuthMessage("Only the world owner can place blocks here!");
-      return;
-    }
-  } else if (worldOwner && isLandLock) {
-    // Trying to place land lock on owned world - only current owner can do this
-    if (networkState.userId !== worldOwner.userId) {
-      setAuthMessage("Only the world owner can change land lock!");
-      return;
-    }
+  const isOwner = worldOwner && networkState.userId === worldOwner.userId;
+
+  // Check world ownership first - non-owners can't build at all
+  if (worldOwner && !isOwner) {
+    setAuthMessage("Only the world owner can build in this world!");
+    return;
+  }
+
+  // Owner can build anywhere. Non-owners already rejected above.
+  // Check if position is locked by another player (only matters for non-owners, but owner can build anywhere)
+  if (!isOwner && isPositionLocked(tx, ty)) {
+    setAuthMessage("This area is locked by another player!");
+    return;
   }
 
   inventory[selectedItem]--;
