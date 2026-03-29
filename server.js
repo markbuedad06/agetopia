@@ -1294,6 +1294,27 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
+    if (msg.type === "chat") {
+      try {
+        const text = String(msg.text || "").trim().slice(0, 100);
+        if (!text) return;
+
+        const payload = {
+          type: "chat",
+          id: player.id,
+          userId: player.userId,
+          username: player.username,
+          text,
+        };
+
+        broadcast(payload, null, worldName);
+      } catch (err) {
+        console.error("Error in chat message:", err);
+        send({ type: "error", message: "Chat failed" });
+      }
+      return;
+    }
+
     if (msg.type === "block_update") {
       try {
         const x = Number(msg.x);

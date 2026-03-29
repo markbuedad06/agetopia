@@ -10,6 +10,7 @@
   <div class="game-shell">
     <header class="hud-top">
       <div class="corner-controls">
+        <button id="chatToggleBtn" class="menu-btn chat-toggle" aria-label="Chat">Chat</button>
         <button id="btnFullscreen" class="action-btn fullscreen" aria-label="Fullscreen">⛶</button>
         <div id="onlineState" class="online-state offline">Offline</div>
         <button id="menuBtn" type="button" class="menu-btn">Menu</button>
@@ -17,6 +18,11 @@
       <div id="authMessage" class="auth-message">Connecting...</div>
       <div id="worldOwnerDisplay" class="world-owner-display hidden"></div>
     </header>
+
+    <div id="chatBar" class="chat-bar hidden" role="form" aria-label="Chat">
+      <input id="chatInput" type="text" maxlength="100" placeholder="Say something (max 100)" aria-label="Chat message" />
+      <button id="chatSendBtn" type="button">Send</button>
+    </div>
 
     <div id="menuModal" class="menu-modal hidden" role="dialog" aria-label="Game menu">
       <button id="menuSettingsBtn" type="button" class="menu-item">Settings</button>

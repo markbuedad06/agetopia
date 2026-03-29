@@ -16,6 +16,10 @@ const settingsModal = document.getElementById("settingsModal");
 const menuSettingsBtn = document.getElementById("menuSettingsBtn");
 const menuExitBtn = document.getElementById("menuExitBtn");
 const menuLogoutBtn = document.getElementById("menuLogoutBtn");
+const chatToggleBtn = document.getElementById("chatToggleBtn");
+const chatBar = document.getElementById("chatBar");
+const chatInput = document.getElementById("chatInput");
+const chatSendBtn = document.getElementById("chatSendBtn");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const graphicsScaleEl = document.getElementById("graphicsScale");
 const toggleReachRingEl = document.getElementById("toggleReachRing");
@@ -115,6 +119,7 @@ const remotePlayers = new Map();
 const drops = new Map();
 const growingPlants = new Map(); // Track growing seeds: "x:y" -> { progress, totalTime }
 const lockedAreas = []; // Array of locked areas: { userId, centerX, centerY, radius }
+const chatBubbles = new Map(); // playerId -> { text, expiresAt, username }
 let nextDropId = 1;
 
 function makeDropId() {
@@ -274,6 +279,26 @@ let suppressBreakUntil = 0;
 let currentNow = performance.now();
 let digitCombo = "";
 let digitComboExpiresAt = 0;
+
+function isChatFocused() {
+  return document.activeElement === chatInput;
+}
+
+function getChatDurationMs(text) {
+  const base = 5000;
+  const perChar = 50;
+  const maxDuration = 15000;
+  return Math.min(maxDuration, base + text.length * perChar);
+}
+
+function addChatBubble(playerId, text) {
+  if (!playerId || !text) return;
+  const now = performance.now();
+  chatBubbles.set(String(playerId), {
+    text,
+    expiresAt: now + getChatDurationMs(text),
+  });
+}
 
 const breakState = {
   targetX: -1,
@@ -657,6 +682,47 @@ function setupMenuInteractions() {
   }
 }
 
+function setupChatUI() {
+  if (!chatToggleBtn || !chatBar || !chatInput || !chatSendBtn) return;
+
+  const openChat = () => {
+    chatBar.classList.remove("hidden");
+    chatInput.focus();
+    keys.clear();
+    leftDown = false;
+  };
+
+  const closeChat = () => {
+    chatBar.classList.add("hidden");
+    chatInput.blur();
+  };
+
+  chatToggleBtn.addEventListener("click", () => {
+    const isOpen = !chatBar.classList.contains("hidden");
+    if (isOpen) {
+      closeChat();
+    } else {
+      openChat();
+    }
+  });
+
+  chatSendBtn.addEventListener("click", () => {
+    sendChatMessage();
+    openChat();
+  });
+
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.code === "Enter") {
+      e.preventDefault();
+      sendChatMessage();
+      openChat();
+    } else if (e.code === "Escape") {
+      e.preventDefault();
+      closeChat();
+    }
+  });
+}
+
 function unlockGameplay() {
   gameplayUnlocked = true;
   document.body.classList.add("authenticated");
@@ -878,6 +944,24 @@ function sendSocket(event) {
   if (!networkState.connected || !networkState.socket) return;
   if (networkState.socket.readyState !== WebSocket.OPEN) return;
   networkState.socket.send(JSON.stringify(event));
+}
+
+function sendChatMessage() {
+  if (!chatInput) return;
+  const raw = chatInput.value ?? "";
+  const text = raw.trim().slice(0, 100);
+  if (!text) return;
+  if (!ONLINE_MODE || !networkState.connected) {
+    setAuthMessage("Chat requires online mode.");
+    return;
+  }
+
+  chatInput.value = "";
+  const playerId = networkState.playerId || networkState.userId;
+  if (playerId) {
+    addChatBubble(playerId, text);
+  }
+  sendSocket({ type: "chat", text });
 }
 
 function tryBreak(dt) {
@@ -1322,6 +1406,104 @@ function drawPlayerBody(worldX, worldY, facing, bodyColor, attackStrength = 0) {
   ctx.fillRect(px + eyeOffset, eyeY, 3, 3);
 }
 
+function drawRoundedRect(x, y, w, h, r) {
+  const radius = Math.min(r, w * 0.5, h * 0.5);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function wrapChatText(text, maxWidth) {
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) lines.push(current);
+
+    if (ctx.measureText(word).width <= maxWidth) {
+      current = word;
+      continue;
+    }
+
+    // Break long word
+    let segment = "";
+    for (const ch of word) {
+      const next = segment + ch;
+      if (ctx.measureText(next).width > maxWidth && segment) {
+        lines.push(segment);
+        segment = ch;
+      } else {
+        segment = next;
+      }
+    }
+    current = segment;
+  }
+
+  if (current) lines.push(current);
+  return lines.length ? lines : [text];
+}
+
+function drawChatBubble(worldX, worldY, text) {
+  if (!text) return;
+
+  ctx.save();
+  ctx.font = "12px Trebuchet MS";
+  const maxWidth = 200;
+  const lines = wrapChatText(text, maxWidth - 16);
+  const lineHeight = 14;
+  const measured = lines.map((line) => ctx.measureText(line).width);
+  const widest = measured.length ? Math.max(...measured) : 0;
+  const bubbleWidth = Math.min(maxWidth, Math.max(40, widest + 16));
+  const bubbleHeight = lines.length * lineHeight + 12;
+
+  const px = worldX - camera.x;
+  const py = worldY - camera.y;
+  const anchorX = px + player.w * 0.5;
+  const anchorY = py - 8;
+  const bubbleX = anchorX - bubbleWidth / 2;
+  const bubbleY = anchorY - bubbleHeight - 12;
+
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+  drawRoundedRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(anchorX - 6, bubbleY + bubbleHeight);
+  ctx.lineTo(anchorX + 6, bubbleY + bubbleHeight);
+  ctx.lineTo(anchorX, bubbleY + bubbleHeight + 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  lines.forEach((line, idx) => {
+    const lineY = bubbleY + 6 + idx * lineHeight + lineHeight * 0.5;
+    ctx.fillText(line, anchorX, lineY);
+  });
+
+  ctx.restore();
+}
+
 function drawRemotePlayers() {
   remotePlayers.forEach((p) => {
     const attackStrength = Math.max(0, (p.punchUntil || 0) - currentNow) / PUNCH_ANIM_MS;
@@ -1330,6 +1512,14 @@ function drawRemotePlayers() {
     const playerOwnerId = p ? String(p.userId ?? p.id) : null;
     const isOwner = ownerId && playerOwnerId === ownerId;
     drawHealthBar(p.x, p.y, p.health ?? MAX_HEALTH, p.maxHealth ?? MAX_HEALTH, p.username, isOwner);
+
+    const bubbleKey = p ? String(p.id) : null;
+    const bubble = bubbleKey ? chatBubbles.get(bubbleKey) : null;
+    if (bubble && bubble.expiresAt > currentNow) {
+      drawChatBubble(p.x, p.y, bubble.text);
+    } else if (bubble && bubble.expiresAt <= currentNow && bubbleKey) {
+      chatBubbles.delete(bubbleKey);
+    }
   });
 }
 
@@ -1720,6 +1910,7 @@ function connectSocket(token) {
 
     if (msg.type === "player_leave") {
       remotePlayers.delete(msg.id);
+      if (msg.id != null) chatBubbles.delete(String(msg.id));
       return;
     }
 
@@ -1872,6 +2063,15 @@ function connectSocket(token) {
       return;
     }
 
+    if (msg.type === "chat") {
+      const text = (msg.text || "").toString().trim().slice(0, 100);
+      const targetId = msg.id != null ? String(msg.id) : msg.userId != null ? String(msg.userId) : null;
+      if (text && targetId) {
+        addChatBubble(targetId, text);
+      }
+      return;
+    }
+
     if (msg.type === "world_owner_set") {
       // World has been claimed by a player
       if (msg.userId) {
@@ -2007,6 +2207,7 @@ async function setupAuthPanel() {
   lockGameplay();
   loadSettings();
   setupMenuInteractions();
+  setupChatUI();
   loadInventoryState();
 
   if (!ONLINE_MODE) {
@@ -2229,6 +2430,13 @@ function draw() {
   drawPlayerBody(player.x, player.y, player.facing, "#1f3b7c", attackStrength);
   const playerIsOwner = worldOwner && String(networkState.userId) === String(worldOwner.userId);
   drawHealthBar(player.x, player.y, player.health, player.maxHealth, networkState.username || "You", playerIsOwner);
+  const selfId = networkState.playerId || networkState.userId;
+  const myBubble = selfId ? chatBubbles.get(selfId) : null;
+  if (myBubble && myBubble.expiresAt > currentNow) {
+    drawChatBubble(player.x, player.y, myBubble.text);
+  } else if (myBubble && myBubble.expiresAt <= currentNow && selfId) {
+    chatBubbles.delete(selfId);
+  }
   drawRemotePlayers();
   drawDrops();
   drawSelection();
@@ -2247,6 +2455,19 @@ function frame(now) {
 
 window.addEventListener("keydown", (e) => {
   if (!gameplayUnlocked) return;
+
+  if (isChatFocused()) {
+    if (e.code === "Enter") {
+      e.preventDefault();
+      sendChatMessage();
+    } else if (e.code === "Escape") {
+      e.preventDefault();
+      chatBar?.classList.add("hidden");
+      chatInput?.blur();
+    }
+    return;
+  }
+
   keys.add(e.code);
 
   // Check for door exit interaction

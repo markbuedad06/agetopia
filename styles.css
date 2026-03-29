@@ -213,6 +213,45 @@ body {
   width: 100%;
 }
 
+.chat-toggle {
+  padding: 0.24rem 0.65rem;
+}
+
+.chat-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+  background: rgba(27, 20, 39, 0.95);
+  border: 1px solid #5e4c7e;
+  border-radius: 10px;
+  padding: 0.35rem 0.45rem;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+  z-index: 30;
+}
+
+.chat-bar input {
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  font: inherit;
+  color: var(--text);
+  background: #2a203a;
+  width: 220px;
+}
+
+.chat-bar button {
+  border: 1px solid #3a9066;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  color: var(--text);
+  background: #2b5d44;
+  cursor: pointer;
+}
+
 .action-btn.fullscreen {
   width: 40px;
   height: 40px;
