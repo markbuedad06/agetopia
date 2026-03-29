@@ -152,7 +152,6 @@ const networkState = {
 let manualDisconnect = false;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
-let pingInterval = null;
 
 let gameplayUnlocked = false;
 let worldOwner = null; // Track who owns the world {userId, username}
@@ -575,8 +574,6 @@ function performLogout() {
   manualDisconnect = true;
   clearTimeout(reconnectTimer);
   reconnectTimer = null;
-  clearInterval(pingInterval);
-  pingInterval = null;
   localStorage.removeItem(TOKEN_KEY);
   networkState.token = "";
   networkState.username = null;
@@ -597,8 +594,6 @@ function exitWorld() {
   manualDisconnect = true;
   clearTimeout(reconnectTimer);
   reconnectTimer = null;
-  clearInterval(pingInterval);
-  pingInterval = null;
   hideMenuAndSettings();
   saveInventoryItems();
   networkState.socket?.close();
@@ -1850,8 +1845,6 @@ function connectSocket(token) {
   manualDisconnect = false;
   clearTimeout(reconnectTimer);
   reconnectTimer = null;
-  clearInterval(pingInterval);
-  pingInterval = null;
 
   const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
   const wsUrl = `${wsProtocol}://${window.location.host}/ws?token=${encodeURIComponent(token)}&world=${encodeURIComponent(WORLD_NAME)}`;
@@ -1865,10 +1858,6 @@ function connectSocket(token) {
     reconnectAttempts = 0;
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
-    clearInterval(pingInterval);
-    pingInterval = setInterval(() => {
-      sendSocket({ type: "ping" });
-    }, 8000);
   });
 
   socket.addEventListener("message", (event) => {
@@ -1876,10 +1865,6 @@ function connectSocket(token) {
     try {
       msg = JSON.parse(event.data);
     } catch {
-      return;
-    }
-
-    if (msg.type === "pong") {
       return;
     }
 
@@ -2165,18 +2150,12 @@ function connectSocket(token) {
   socket.addEventListener("close", () => {
     networkState.connected = false;
     setOnlineBadge(false, "Offline");
-    clearInterval(pingInterval);
-    pingInterval = null;
-
     if (manualDisconnect || !ONLINE_MODE) return;
-
-    const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempts));
-    reconnectAttempts += 1;
-    setAuthMessage(`Reconnecting in ${Math.round(delay / 1000)}s...`);
-    clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => {
-      connectSocket(networkState.token);
-    }, delay);
+    if (gameplayUnlocked) {
+      lockGameplay();
+      setAuthMessage("Disconnected from server.");
+      redirectToLogin("Disconnected. Please login again.");
+    }
   });
 }
 
