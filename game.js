@@ -127,7 +127,7 @@ function isPositionLocked(x, y) {
     const dist = Math.sqrt(Math.pow(x - lock.centerX, 2) + Math.pow(y - lock.centerY, 2));
     if (dist <= lock.radius) {
       // Check if this is the player's own lock
-      if (lock.userId === networkState.userId) return false;
+      if (String(lock.userId) === String(networkState.userId)) return false;
       return true; // Locked by another player
     }
   }
@@ -141,6 +141,7 @@ const networkState = {
   token: localStorage.getItem(TOKEN_KEY) || "",
   connected: false,
   lastPositionSentAt: 0,
+  playerId: null, // Session-scoped player id (changes per login)
 };
 
 let gameplayUnlocked = false;
@@ -297,7 +298,7 @@ function updateWorldOwnerDisplay() {
     return;
   }
   
-  const isOwner = worldOwner.userId === networkState.userId;
+  const isOwner = String(worldOwner.userId) === String(networkState.userId);
   if (isOwner) {
     worldOwnerEl.textContent = `🔒 ${worldOwner.username}'s World`;
     worldOwnerEl.classList.remove("hidden");
@@ -539,6 +540,7 @@ function performLogout() {
   networkState.token = "";
   networkState.username = null;
   networkState.userId = null;
+  networkState.playerId = null;
   lockGameplay();
   remotePlayers.clear();
   networkState.socket?.close();
@@ -783,7 +785,7 @@ function playerCenter(entity) {
 }
 
 function triggerPunchAnimation(id) {
-  if (id === networkState.userId) {
+  if (String(id) === String(networkState.playerId)) {
     player.punchUntil = currentNow + PUNCH_ANIM_MS;
     return;
   }
@@ -795,7 +797,7 @@ function triggerPunchAnimation(id) {
 }
 
 function applyKnockback(targetId, impulseX, impulseY, nudgeX = 0, nudgeY = 0) {
-  if (targetId === networkState.userId) {
+  if (String(targetId) === String(networkState.playerId)) {
     player.x += nudgeX;
     player.y += nudgeY;
     player.vx += impulseX;
@@ -900,7 +902,7 @@ function tryBreak(dt) {
   }
 
   // Check world ownership - only owner can break
-  const isOwner = worldOwner && networkState.userId === worldOwner.userId;
+  const isOwner = worldOwner && String(networkState.userId) === String(worldOwner.userId);
   if (worldOwner && !isOwner) {
     breakState.progress = 0;
     breakState.targetX = -1;
@@ -1131,7 +1133,7 @@ function tryPlace() {
   }
 
   const isLandLock = selectedItem === 15; // Land lock block ID
-  const isOwner = worldOwner && networkState.userId === worldOwner.userId;
+  const isOwner = worldOwner && String(networkState.userId) === String(worldOwner.userId);
 
   // Check world ownership first - non-owners can't build at all
   if (worldOwner && !isOwner) {
@@ -1157,7 +1159,7 @@ function tryPlace() {
     // Set world owner if not already set
     if (!worldOwner) {
       worldOwner = {
-        userId: networkState.userId,
+        userId: String(networkState.userId),
         username: networkState.username
       };
       console.log("Player claimed world - owner set to", { userId: networkState.userId, username: networkState.username });
@@ -1324,7 +1326,9 @@ function drawRemotePlayers() {
   remotePlayers.forEach((p) => {
     const attackStrength = Math.max(0, (p.punchUntil || 0) - currentNow) / PUNCH_ANIM_MS;
     drawPlayerBody(p.x, p.y, p.facing, "#73318e", attackStrength);
-    const isOwner = worldOwner && p.id === worldOwner.userId;
+    const ownerId = worldOwner ? String(worldOwner.userId) : null;
+    const playerOwnerId = p ? String(p.userId ?? p.id) : null;
+    const isOwner = ownerId && playerOwnerId === ownerId;
     drawHealthBar(p.x, p.y, p.health ?? MAX_HEALTH, p.maxHealth ?? MAX_HEALTH, p.username, isOwner);
   });
 }
@@ -1636,7 +1640,8 @@ function connectSocket(token) {
         player.health = msg.player.health ?? MAX_HEALTH;
         player.maxHealth = msg.player.maxHealth ?? MAX_HEALTH;
       }
-      networkState.userId = msg.id;
+      networkState.playerId = String(msg.id);
+      networkState.userId = msg.userId != null ? String(msg.userId) : String(msg.id);
       networkState.username = msg.username;
       try {
         localStorage.setItem(LAST_USERNAME_KEY, msg.username);
@@ -1645,7 +1650,7 @@ function connectSocket(token) {
       // Set world owner if it exists
       if (msg.worldOwner && msg.worldOwner.userId) {
         worldOwner = {
-          userId: msg.worldOwner.userId,
+          userId: String(msg.worldOwner.userId),
           username: msg.worldOwner.username
         };
         console.log("World owner loaded from server on init:", { ownerId: msg.worldOwner.userId, username: msg.worldOwner.username, myUserId: networkState.userId });
@@ -1670,6 +1675,7 @@ function connectSocket(token) {
         msg.players.forEach((p) => {
           remotePlayers.set(p.id, {
             ...p,
+            userId: p.userId != null ? String(p.userId) : p.userId,
             health: p.health ?? MAX_HEALTH,
             maxHealth: p.maxHealth ?? MAX_HEALTH,
             punchUntil: 0,
@@ -1704,6 +1710,7 @@ function connectSocket(token) {
     if (msg.type === "player_join") {
       remotePlayers.set(msg.player.id, {
         ...msg.player,
+        userId: msg.player.userId != null ? String(msg.player.userId) : msg.player.userId,
         health: msg.player.health ?? MAX_HEALTH,
         maxHealth: msg.player.maxHealth ?? MAX_HEALTH,
         punchUntil: 0,
@@ -1717,8 +1724,9 @@ function connectSocket(token) {
     }
 
     if (msg.type === "player_move") {
-      if (msg.id === networkState.userId) return;
+      if (String(msg.id) === String(networkState.playerId)) return;
       const current = remotePlayers.get(msg.id) || { id: msg.id, username: msg.username || "Player" };
+      if (msg.userId != null && !current.userId) current.userId = String(msg.userId);
       current.x = msg.x;
       current.y = msg.y;
       current.facing = msg.facing;
@@ -1729,7 +1737,7 @@ function connectSocket(token) {
     }
 
     if (msg.type === "health_update") {
-      if (msg.id === networkState.userId) {
+      if (String(msg.id) === String(networkState.playerId)) {
         player.health = msg.health;
         player.maxHealth = msg.maxHealth || MAX_HEALTH;
       } else {
@@ -1760,7 +1768,7 @@ function connectSocket(token) {
     }
 
     if (msg.type === "respawn") {
-      if (msg.id === networkState.userId) {
+      if (String(msg.id) === String(networkState.playerId)) {
         player.x = msg.x;
         player.y = msg.y;
         player.health = msg.health ?? MAX_HEALTH;
@@ -1828,7 +1836,7 @@ function connectSocket(token) {
         lockedAreas.length = 0; // Clear array
         msg.locks.forEach(lock => {
           lockedAreas.push({
-            userId: lock.userId,
+            userId: lock.userId != null ? String(lock.userId) : lock.userId,
             centerX: lock.centerX,
             centerY: lock.centerY,
             radius: lock.radius || 10
@@ -1867,12 +1875,12 @@ function connectSocket(token) {
     if (msg.type === "world_owner_set") {
       // World has been claimed by a player
       worldOwner = {
-        userId: msg.userId,
+        userId: String(msg.userId),
         username: msg.username
       };
       console.log("World owner broadcast received:", { ownerId: msg.userId, username: msg.username, myUserId: networkState.userId });
       updateWorldOwnerDisplay();
-      if (msg.userId === networkState.userId) {
+      if (String(msg.userId) === String(networkState.userId)) {
         setAuthMessage(`You claimed the world!`);
       } else {
         setAuthMessage(`${msg.username} claimed the world!`);
@@ -2213,7 +2221,7 @@ function draw() {
   }
   const attackStrength = Math.max(0, player.punchUntil - currentNow) / PUNCH_ANIM_MS;
   drawPlayerBody(player.x, player.y, player.facing, "#1f3b7c", attackStrength);
-  const playerIsOwner = worldOwner && networkState.userId === worldOwner.userId;
+  const playerIsOwner = worldOwner && String(networkState.userId) === String(worldOwner.userId);
   drawHealthBar(player.x, player.y, player.health, player.maxHealth, networkState.username || "You", playerIsOwner);
   drawRemotePlayers();
   drawDrops();
