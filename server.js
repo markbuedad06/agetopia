@@ -389,6 +389,45 @@ async function initStores() {
   
   // Run migration to convert inventory from ID-based to name-based
   await migrateInventoryToNames();
+  
+  // Cleanup: ensure all inventories have land_lock
+  await ensureLandLockInAllInventories();
+}
+
+async function ensureLandLockInAllInventories() {
+  try {
+    console.log("Ensuring all inventories have Land Lock...");
+    const [allRows] = await pool.query("SELECT `key`, inventory FROM inventories");
+    
+    let updatedCount = 0;
+    for (const row of allRows) {
+      let inventory = {};
+      try {
+        inventory = typeof row.inventory === "string" ? JSON.parse(row.inventory) : row.inventory || {};
+      } catch {
+        continue;
+      }
+      
+      // Check if land_lock is missing or 0
+      if (!inventory["Land Lock"] || inventory["Land Lock"] < 1) {
+        inventory["Land Lock"] = 1;
+        const updatedJson = JSON.stringify(inventory);
+        await pool.query(
+          "UPDATE inventories SET inventory = ? WHERE `key` = ?",
+          [updatedJson, row.key]
+        );
+        updatedCount++;
+      }
+    }
+    
+    if (updatedCount > 0) {
+      console.log(`Updated ${updatedCount} inventories to include Land Lock`);
+    } else {
+      console.log("All inventories already have Land Lock");
+    }
+  } catch (err) {
+    console.error("Error ensuring land_lock in inventories (non-fatal):", err.message);
+  }
 }
 
 async function migrateInventoryToNames() {
@@ -425,6 +464,7 @@ async function migrateInventoryToNames() {
     console.log("Migrating inventories from ID-based to name-based...");
     const [allRows] = await pool.query("SELECT `key`, userId, inventory FROM inventories");
     
+    let migratedCount = 0;
     for (const row of allRows) {
       let oldInv = {};
       try {
@@ -443,14 +483,18 @@ async function migrateInventoryToNames() {
         }
       }
       
+      // FORCE ensure Land Lock is always at least 1
+      newInv["Land Lock"] = Math.max(1, newInv["Land Lock"] || 0);
+      
       const newInvJson = JSON.stringify(newInv);
       await pool.query(
         "UPDATE inventories SET inventory = ? WHERE `key` = ?",
         [newInvJson, row.key]
       );
+      migratedCount++;
     }
     
-    console.log(`Successfully migrated ${allRows.length} inventory records to use item names`);
+    console.log(`Successfully migrated ${migratedCount} inventory records to use item names with Land Lock guaranteed`);
   } catch (err) {
     console.error("Migration encountered an issue (non-fatal):", err.message);
     // Don't throw - allow server to continue even if migration has issues
