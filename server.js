@@ -71,7 +71,7 @@ const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 const lockedAreasCache = new Map(); // worldName -> Array of locked areas
 const worldOwnersCache = new Map(); // worldName -> userId of owner
 
-const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
 // Item ID to name mapping
 const ITEM_ID_TO_NAME = {
@@ -84,6 +84,7 @@ const ITEM_ID_TO_NAME = {
   8: "Gem",
   15: "Land Lock",
   16: "Lava",
+  17: "Lava Seed",
   9: "Grass Seed",
   10: "Dirt Seed",
   11: "Stone Seed",
@@ -1127,6 +1128,19 @@ wss.on("connection", async (ws, req) => {
     const bounds = getPlayerTileBounds(p);
     const worldArr = getOrCreateWorldArray(worldName);
 
+    const cornerPoints = [
+      { x: p.x, y: p.y },
+      { x: p.x + 23, y: p.y },
+      { x: p.x, y: p.y + 31 },
+      { x: p.x + 23, y: p.y + 31 },
+    ];
+
+    const hasLavaAtPoint = (pt) => {
+      const tx = Math.floor(pt.x / TILE);
+      const ty = Math.floor(pt.y / TILE);
+      return inBounds(tx, ty) && worldArr[indexOf(tx, ty)] === LAVA_TILE;
+    };
+
     let lavaHit = null;
     for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
       for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
@@ -1206,6 +1220,16 @@ wss.on("connection", async (ws, req) => {
       userId: "", // Will be set when someone places land_lock
     });
   }
+
+    // Corner contact (touching diagonally) also counts as lava
+    if (!lavaHit) {
+      for (const pt of cornerPoints) {
+        if (hasLavaAtPoint(pt)) {
+          lavaHit = { tx: Math.floor(pt.x / TILE), ty: Math.floor(pt.y / TILE) };
+          break;
+        }
+      }
+    }
 
   const others = [];
   for (const [id, p] of players.entries()) {

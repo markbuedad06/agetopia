@@ -72,6 +72,7 @@ const tileDefs = {
   103: { name: "Growing Wood", color: "#c48a4d", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 4, sourceItem: 12 },
   104: { name: "Growing Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 5, sourceItem: 13 },
   105: { name: "Growing 123", color: "#f59e0b", solid: false, hardness: 0, texture: null, rarity: 3, sourceBlock: 6, sourceItem: 14 },
+  106: { name: "Growing Lava", color: "#e25822", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 16, sourceItem: 17 },
 };
 
 const itemDefs = {
@@ -83,7 +84,8 @@ const itemDefs = {
   6: { name: "123 Block", icon: "assets/items/item-123.svg", color: "#f59e0b", rarity: 1 },
   8: { name: "Gem", icon: "assets/items/gem.svg", color: "#3b82f6", rarity: 3 },
   15: { name: "Land Lock", icon: "assets/items/land-lock.svg", color: "#FFD700", rarity: 1 },
-   16: { name: "Lava", icon: "assets/items/lava-block.svg", color: "#e25822", rarity: 1 },
+  16: { name: "Lava", icon: "assets/items/lava-block.svg", color: "#e25822", rarity: 1 },
+  17: { name: "Lava Seed", icon: "assets/items/lava-seed.svg", color: "#f46b2d", rarity: 1 },
   9: { name: "Grass Seed", icon: "assets/items/grass-seed.svg", color: "#62c462", rarity: 1 },
   10: { name: "Dirt Seed", icon: "assets/items/dirt-seed.svg", color: "#8f5f3d", rarity: 1 },
   11: { name: "Stone Seed", icon: "assets/items/stone-seed.svg", color: "#8d98a2", rarity: 1 },
@@ -98,7 +100,7 @@ for (const [id, def] of Object.entries(itemDefs)) {
   ITEM_NAME_TO_ID[def.name] = Number(id);
 }
 
-const hotbarOrder = [1, 2, 3, 4, 5, 6, 16, 9, 10, 11, 12, 13, 14, 15];
+const hotbarOrder = [1, 2, 3, 4, 5, 6, 16, 9, 10, 11, 12, 13, 14, 17, 15];
 
 // Simple inventory state
 const inventory = {
@@ -117,6 +119,7 @@ const inventory = {
   14: 0,
   15: 0,
   16: 0,
+  17: 0,
 };
 
 let selectedSlot = 0;
@@ -250,23 +253,43 @@ function getGrowthTimeSeconds(rarity) {
   return 10 * Math.pow(1.1, rarity);
 }
 
+const SEED_TO_GROW_TILE = {
+  9: 100,
+  10: 101,
+  11: 102,
+  12: 103,
+  13: 104,
+  14: 105,
+  17: 106,
+};
+
+const SEED_TO_BLOCK = {
+  9: 1,
+  10: 2,
+  11: 3,
+  12: 4,
+  13: 5,
+  14: 6,
+  17: 16,
+};
+
 function isSeedItem(itemId) {
-  return itemId >= 9 && itemId <= 14;
+  return Object.prototype.hasOwnProperty.call(SEED_TO_GROW_TILE, itemId);
 }
 
 function getSeedGrowingTile(itemId) {
-  // Seeds 9-14 map to growing tiles 100-105
-  if (itemId >= 9 && itemId <= 14) {
-    return 100 + (itemId - 9);
-  }
-  return null;
+  return SEED_TO_GROW_TILE[itemId] ?? null;
+}
+
+function getSeedSourceBlock(itemId) {
+  return SEED_TO_BLOCK[itemId] ?? null;
 }
 
 function getItemRarity(itemId) {
   return itemDefs[itemId]?.rarity || 1;
 }
 
-const player = {
+const tileDefs = {
   x: 15 * TILE,
   y: 30 * TILE,
   w: 24,
@@ -275,7 +298,7 @@ const player = {
   vy: 0,
   speed: 290,
   jump: 500,
-  onGround: false,
+  16: { name: "Lava", color: "#e25822", solid: true, hardness: 0.2, texture: "assets/blocks/lava.svg", rarity: 1 },
   facing: 1,
   reach: 5,
   health: MAX_HEALTH,
@@ -284,6 +307,7 @@ const player = {
   nextPunchAt: 0,
   lastLavaHitAt: 0,
 };
+  106: { name: "Growing Lava", color: "#e25822", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 16, sourceItem: 17 },
 
 const camera = {
   x: 0,
@@ -427,7 +451,7 @@ function saveInventoryItems() {
     if (ONLINE_MODE && networkState.connected) {
       // Send inventory to server so it persists across devices
       const payload = {};
-      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+      const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
       validKeys.forEach((k) => { payload[k] = Math.max(0, Math.min(INVENTORY_STACK_LIMIT, inventory[k] || 0)); });
       sendSocket({ type: "inventory_update", inventory: payload });
     }
@@ -467,6 +491,7 @@ function loadInventoryItems() {
         }
         inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 0);
         inventory[16] = Math.min(INVENTORY_STACK_LIMIT, loaded[16] || 0);
+        inventory[17] = Math.min(INVENTORY_STACK_LIMIT, loaded[17] || 0);
       }
     }
   } catch (err) {
@@ -474,7 +499,7 @@ function loadInventoryItems() {
   }
   
   // Remove ALL keys that aren't in the valid list
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
   for (const key in inventory) {
     const numKey = parseInt(key);
     if (!validKeys.includes(numKey)) {
@@ -494,7 +519,7 @@ function applyInventoryFromServer(serverInv) {
   }
   
   // Clear current inventory
-  const validIds = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const validIds = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
   validIds.forEach((k) => { inventory[k] = 0; });
   
   // Apply server inventory (handle both ID-based legacy and name-based formats)
@@ -1322,11 +1347,13 @@ function tryPlace() {
     const baseDrops = 2 + rarity;
     const dropCount = baseDrops + (Math.random() < 0.5 ? 1 : 0);
     const plantedAt = Date.now();
+    const sourceBlock = getSeedSourceBlock(selectedItem);
+    if (!sourceBlock) return;
     growingPlants.set(plantKey, { 
       progress: 0, 
       totalTime: growthTime, 
       dropCount: dropCount,
-      sourceBlock: selectedItem - 8,
+      sourceBlock,
       fullGrown: false,
       plantedAt: plantedAt
     });
@@ -1338,7 +1365,7 @@ function tryPlace() {
       type: "plant_seed", 
       x: tx, 
       y: ty, 
-      sourceBlock: selectedItem - 8,
+      sourceBlock,
       dropCount: dropCount,
       totalTime: growthTime,
       plantedAt: plantedAt
@@ -1809,7 +1836,7 @@ function renderFullInventory() {
   });
 
   // Display loot items (gems and seeds) that aren't already in hotbar
-  const lootItems = [8, 9, 10, 11, 12, 13, 14];
+  const lootItems = [8, 9, 10, 11, 12, 13, 14, 17];
   lootItems.forEach((itemId) => {
     if (hotbarOrder.includes(itemId)) return; // Skip items already in hotbar
     const count = inventory[itemId] || 0;
@@ -2209,9 +2236,10 @@ function resetInventoryState() {
   inventory[14] = 0;
   inventory[15] = 0;
   inventory[16] = 0;
+  inventory[17] = 0;
   
   // Remove any stray keys
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
   for (const key in inventory) {
     if (!validKeys.includes(parseInt(key))) {
       delete inventory[key];
@@ -2351,7 +2379,7 @@ function pickupDrop(drop) {
   inventory[itemId] = Math.min(INVENTORY_STACK_LIMIT, inventory[itemId] + 1);
   
   // For seeds and blocks, move them to quick slots (first 5) if they're not already there
-  const isSeed = itemId >= 9 && itemId <= 14;
+  const isSeed = isSeedItem(itemId);
   const isBlock = (itemId >= 1 && itemId <= 7) || itemId === 15 || itemId === 16;
   
   if (isSeed || isBlock) {
@@ -2440,6 +2468,19 @@ function handleLavaDamage(now) {
   if (ONLINE_MODE && networkState.connected) return; // Server is authoritative in online mode
 
   const bounds = getPlayerTileBounds();
+  const cornerPoints = [
+    { x: player.x, y: player.y },
+    { x: player.x + player.w - 1, y: player.y },
+    { x: player.x, y: player.y + player.h - 1 },
+    { x: player.x + player.w - 1, y: player.y + player.h - 1 },
+  ];
+
+  const hasLavaAtPoint = (pt) => {
+    const tx = Math.floor(pt.x / TILE);
+    const ty = Math.floor(pt.y / TILE);
+    return inBounds(tx, ty) && getTile(tx, ty) === LAVA_TILE;
+  };
+
   let lavaHit = null;
   for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
     for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
@@ -2450,6 +2491,16 @@ function handleLavaDamage(now) {
       }
     }
     if (lavaHit) break;
+  }
+
+  // Corner contact (touching diagonally) also counts as lava
+  if (!lavaHit) {
+    for (const pt of cornerPoints) {
+      if (hasLavaAtPoint(pt)) {
+        lavaHit = { tx: Math.floor(pt.x / TILE), ty: Math.floor(pt.y / TILE) };
+        break;
+      }
+    }
   }
 
   // Also treat standing on top of lava as a hit
