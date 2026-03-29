@@ -2317,15 +2317,19 @@ function updateDrops(dt) {
     
     drop.y += drop.vy * dt;
     drop.x += drop.vx * dt;
-    
-    drop.floatTime += dt;
-    const floatPhase = Math.sin(drop.floatTime * 3) * DROP_FLOAT_SPEED;
-    
-    if (drop.y > drop.floatY) {
-      drop.y = drop.floatY;
+
+    // Prevent drops from passing through solid tiles
+    const halfSize = 10;
+    const tileBelowX = Math.floor(drop.x / TILE);
+    const tileBelowY = Math.floor((drop.y + halfSize) / TILE);
+    if (isSolid(getTile(tileBelowX, tileBelowY))) {
+      drop.y = tileBelowY * TILE - halfSize;
       drop.vy = 0;
       drop.vx *= 0.85;
     }
+    
+    drop.floatTime += dt;
+    const floatPhase = Math.sin(drop.floatTime * 3) * DROP_FLOAT_SPEED;
     
     const playerCenter = player.x + player.w * 0.5;
     const playerCenterY = player.y + player.h * 0.5;
