@@ -849,11 +849,11 @@ app.post("/api/register", async (req, res) => {
     const username = String(req.body?.username || "").trim();
     const password = String(req.body?.password || "");
 
-    if (!/^[a-zA-Z0-9_]{3,24}$/.test(username)) {
-      return res.status(400).json({ error: "Username must be 3-24 chars and alphanumeric/underscore" });
+    if (username.length < 3 || username.length > 24) {
+      return res.status(400).json({ error: "Username must be 3-24 characters" });
     }
-    if (password.length < 6 || password.length > 64) {
-      return res.status(400).json({ error: "Password must be 6-64 characters" });
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
     const existing = await usersDB.findOne({ username });
