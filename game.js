@@ -727,6 +727,13 @@ function setupChatUI() {
     if (e.code === "Enter" && chatBar.classList.contains("hidden") && !isChatFocused()) {
       e.preventDefault();
       openChat();
+      return;
+    }
+
+    // If chat is open but not focused (rare), Enter will close it to avoid trapping focus
+    if (e.code === "Enter" && !chatBar.classList.contains("hidden") && !isChatFocused()) {
+      e.preventDefault();
+      closeChat();
     }
   });
 }
