@@ -1868,7 +1868,7 @@ function connectSocket(token) {
     clearInterval(pingInterval);
     pingInterval = setInterval(() => {
       sendSocket({ type: "ping" });
-    }, 20000);
+    }, 8000);
   });
 
   socket.addEventListener("message", (event) => {

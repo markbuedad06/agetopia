@@ -987,6 +987,27 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 const players = new Map();
 const worldPlayers = new Map();
 
+// Server-side heartbeat to keep sockets alive and detect stale connections
+const HEARTBEAT_MS = 10000;
+wss.on("connection", (ws) => {
+  ws.isAlive = true;
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
+});
+
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_MS);
+
+wss.on("close", () => {
+  clearInterval(heartbeatInterval);
+});
+
 function getOrCreateWorldArray(worldName) {
   if (!worldCache.has(worldName)) {
     const world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
