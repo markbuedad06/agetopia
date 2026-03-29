@@ -1099,17 +1099,19 @@ function tryBreak(dt) {
         const sourceBlock = plant.sourceBlock;
         const dropCount = plant.dropCount;
         
-        // Drop all the blocks
+        // Drop all the blocks with a tighter spread
         for (let i = 0; i < dropCount; i++) {
           const dropId = makeDropId();
           const angle = (i / dropCount) * Math.PI * 2;
+          const spread = 6; // reduce radial spawn distance
+          const speed = 100; // reduce launch speed for smaller explosion
           const drop = {
             id: dropId,
             tile: sourceBlock,
-            x: dropX + Math.cos(angle) * 10,
-            y: dropY + Math.sin(angle) * 10,
-            vx: Math.cos(angle) * 150,
-            vy: Math.sin(angle) * 150 - 150,
+            x: dropX + Math.cos(angle) * spread,
+            y: dropY + Math.sin(angle) * spread,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - speed,
             floatY: dropY,
             floatTime: 0,
           };
