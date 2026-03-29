@@ -459,6 +459,10 @@ function makeWorldOwnersRepo() {
         [doc.worldName, doc.userId, createdAt]
       );
     },
+    remove: async (filter = {}) => {
+      if (!filter.worldName) return;
+      await pool.query("DELETE FROM world_owners WHERE worldName = ?", [filter.worldName]);
+    },
   };
 }
 
@@ -650,6 +654,11 @@ async function clearAllGameData() {
   }
 }
 
+async function hasAnyLocks(worldName) {
+  const locks = await lockedAreasDB.find({ worldName });
+  return Array.isArray(locks) && locks.length > 0;
+}
+
 // Hash function for locking key
 function lockKey(worldName, centerX, centerY) {
   return `${worldName}:lock:${centerX}:${centerY}`;
@@ -755,6 +764,12 @@ async function setWorldOwner(worldName, userId) {
   // Update cache
   worldOwnersCache.set(worldName, ownerId);
   return true; // Successfully claimed
+}
+
+async function clearWorldOwner(worldName) {
+  await worldOwnersDB.remove({ worldName });
+  await worldsDB.update({ worldName }, { worldName, userId: "" });
+  worldOwnersCache.delete(worldName);
 }
 
 function createToken(user) {
@@ -1340,6 +1355,12 @@ wss.on("connection", async (ws, req) => {
         } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
           // Removing land_lock - remove the lock
           await removeLock(worldName, x, y);
+          const locksRemain = await hasAnyLocks(worldName);
+          if (!locksRemain) {
+            await clearWorldOwner(worldName);
+            broadcast({ type: "world_owner_set", userId: null, username: null }, null, worldName);
+            console.log(`[${worldName}] Land lock removed; world ownership cleared`);
+          }
         }
         
         world[indexOf(x, y)] = tile;

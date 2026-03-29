@@ -1874,16 +1874,22 @@ function connectSocket(token) {
 
     if (msg.type === "world_owner_set") {
       // World has been claimed by a player
-      worldOwner = {
-        userId: String(msg.userId),
-        username: msg.username
-      };
-      console.log("World owner broadcast received:", { ownerId: msg.userId, username: msg.username, myUserId: networkState.userId });
-      updateWorldOwnerDisplay();
-      if (String(msg.userId) === String(networkState.userId)) {
-        setAuthMessage(`You claimed the world!`);
+      if (msg.userId) {
+        worldOwner = {
+          userId: String(msg.userId),
+          username: msg.username
+        };
+        console.log("World owner broadcast received:", { ownerId: msg.userId, username: msg.username, myUserId: networkState.userId });
+        updateWorldOwnerDisplay();
+        if (String(msg.userId) === String(networkState.userId)) {
+          setAuthMessage(`You claimed the world!`);
+        } else {
+          setAuthMessage(`${msg.username} claimed the world!`);
+        }
       } else {
-        setAuthMessage(`${msg.username} claimed the world!`);
+        worldOwner = null;
+        updateWorldOwnerDisplay();
+        setAuthMessage("World is now unclaimed.");
       }
       return;
     }
