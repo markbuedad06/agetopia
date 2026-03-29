@@ -1003,6 +1003,10 @@ function tryPlace() {
   if (!inBounds(tx, ty) || !canReach(tx, ty)) return;
   if (getTile(tx, ty) !== 0) return;
 
+  // Check if there's already a growing plant at this location
+  const plantKey = `${tx}:${ty}`;
+  if (growingPlants.has(plantKey)) return;
+
   const selectedItem = hotbarOrder[selectedSlot];
   if (!inventory[selectedItem] || inventory[selectedItem] < 1) return;
 
@@ -1028,7 +1032,6 @@ function tryPlace() {
     // Calculate random drop count based on rarity (higher rarity = more drops)
     const baseDrops = 2 + rarity;
     const dropCount = baseDrops + (Math.random() < 0.5 ? 1 : 0);
-    const plantKey = `${tx}:${ty}`;
     const plantedAt = Date.now();
     growingPlants.set(plantKey, { 
       progress: 0, 
