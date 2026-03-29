@@ -55,6 +55,7 @@ const tileDefs = {
   5: { name: "Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: "assets/blocks/cloud.svg", rarity: 1 },
   6: { name: "123 Block", color: "#f59e0b", solid: true, hardness: 0.45, texture: "assets/blocks/block-123.svg", rarity: 3 },
    7: { name: "Door", color: "rgba(217, 119, 6, 0.3)", solid: false, hardness: 0, texture: "assets/blocks/door.svg", rarity: 0 },
+  15: { name: "Land Lock", color: "#d946ef", solid: true, hardness: 0.2, texture: null, rarity: 0 },
   // Growing seeds (100-106)
   100: { name: "Growing Grass", color: "#62c462", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 1, sourceItem: 9 },
   101: { name: "Growing Dirt", color: "#8f5f3d", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 2, sourceItem: 10 },
@@ -72,6 +73,7 @@ const itemDefs = {
   5: { name: "Cloud Block", icon: "assets/items/cloud-piece.svg", color: "#dae9ff", rarity: 1 },
   6: { name: "123 Block", icon: "assets/items/item-123.svg", color: "#f59e0b", rarity: 1 },
   8: { name: "Gem", icon: "assets/items/gem.svg", color: "#3b82f6", rarity: 3 },
+  15: { name: "Land Lock", icon: "assets/items/land-lock.svg", color: "#d946ef", rarity: 0 },
   9: { name: "Grass Seed", icon: "assets/items/grass-seed.svg", color: "#62c462", rarity: 1 },
   10: { name: "Dirt Seed", icon: "assets/items/dirt-seed.svg", color: "#8f5f3d", rarity: 1 },
   11: { name: "Stone Seed", icon: "assets/items/stone-seed.svg", color: "#8d98a2", rarity: 1 },
@@ -121,6 +123,7 @@ const networkState = {
 };
 
 let gameplayUnlocked = false;
+let worldOwner = null; // Track who owns the world {userId, username}
 let settingsState = {
   renderScale: 1,
   showReachRing: true,
@@ -815,6 +818,15 @@ function tryBreak(dt) {
     return;
   }
 
+  // Check world ownership - only owner can break
+  if (worldOwner && networkState.userId !== worldOwner.userId) {
+    breakState.progress = 0;
+    breakState.targetX = -1;
+    breakState.targetY = -1;
+    setAuthMessage("Only the world owner can break blocks here!");
+    return;
+  }
+
   const { tx, ty } = screenToWorldTile(mouseX, mouseY);
   if (!inBounds(tx, ty) || !canReach(tx, ty)) {
     breakState.progress = 0;
@@ -1029,8 +1041,48 @@ function tryPlace() {
     return;
   }
 
+  // Check world ownership
+  const isLandLock = selectedItem === 15; // Land lock block ID
+  if (worldOwner && !isLandLock) {
+    // World has owner and not placing land lock - only owner can place
+    if (networkState.userId !== worldOwner.userId) {
+      setAuthMessage("Only the world owner can place blocks here!");
+      return;
+    }
+  } else if (worldOwner && isLandLock) {
+    // Trying to place land lock on owned world - only current owner can do this
+    if (networkState.userId !== worldOwner.userId) {
+      setAuthMessage("Only the world owner can change land lock!");
+      return;
+    }
+  }
+
   inventory[selectedItem]--;
   saveInventoryItems();
+  
+  // Handle land lock placement
+  if (isLandLock) {
+    setTile(tx, ty, 15); // Land lock tile ID
+    suppressBreakUntil = currentNow + 300;
+    
+    // Set world owner if not already set
+    if (!worldOwner) {
+      worldOwner = {
+        userId: networkState.userId,
+        username: networkState.username
+      };
+      setAuthMessage(`${networkState.username} claimed the world!`);
+    }
+    
+    sendSocket({ 
+      type: "block_update", 
+      x: tx, 
+      y: ty, 
+      tile: 15,
+      owner: worldOwner 
+    });
+    return;
+  }
   
   // Handle seed planting vs block placement
   if (isSeedItem(selectedItem)) {
