@@ -1315,6 +1315,9 @@ wss.on("connection", async (ws, req) => {
         // Check world ownership - owner can build anywhere, non-owners can't build in owned worlds
         const worldOwner = await getWorldOwner(worldName);
         const isOwner = worldOwner && worldOwner === String(player.userId);
+        if (worldOwner) {
+          console.log(`[block_update] world=${worldName} owner=${worldOwner} playerUserId=${player.userId} isOwner=${Boolean(isOwner)}`);
+        }
         
         if (worldOwner && !isOwner) {
           // World is owned by another player - reject
@@ -1386,6 +1389,9 @@ wss.on("connection", async (ws, req) => {
         // Check world ownership - only owner can plant seeds
         const worldOwner = await getWorldOwner(worldName);
         const isOwner = worldOwner && worldOwner === String(player.userId);
+        if (worldOwner) {
+          console.log(`[plant_seed] world=${worldName} owner=${worldOwner} playerUserId=${player.userId} isOwner=${Boolean(isOwner)}`);
+        }
         
         if (worldOwner && !isOwner) {
           send({ type: "error", message: "Only the world owner can plant seeds" });
