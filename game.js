@@ -55,7 +55,7 @@ const tileDefs = {
   5: { name: "Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: "assets/blocks/cloud.svg", rarity: 1 },
   6: { name: "123 Block", color: "#f59e0b", solid: true, hardness: 0.45, texture: "assets/blocks/block-123.svg", rarity: 3 },
    7: { name: "Door", color: "rgba(217, 119, 6, 0.3)", solid: false, hardness: 0, texture: "assets/blocks/door.svg", rarity: 0 },
-  15: { name: "Land Lock", color: "#FFD700", solid: true, hardness: 2.0, texture: null, rarity: 1 },
+  15: { name: "Land Lock", color: "#FFD700", solid: true, hardness: 2.0, texture: "assets/blocks/land-lock.svg", rarity: 1 },
   // Growing seeds (100-106)
   100: { name: "Growing Grass", color: "#62c462", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 1, sourceItem: 9 },
   101: { name: "Growing Dirt", color: "#8f5f3d", solid: false, hardness: 0, texture: null, rarity: 1, sourceBlock: 2, sourceItem: 10 },
