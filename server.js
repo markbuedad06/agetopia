@@ -713,7 +713,7 @@ async function getWorldOwner(worldName) {
   const owner = await worldOwnersDB.findOne({ worldName });
   if (owner) {
     worldOwnersCache.set(worldName, owner.userId);
-    return owner.userId;
+    return owner.userId; // stored as persistent userId (numeric)
   }
   
   return null; // No owner yet
@@ -729,7 +729,7 @@ async function setWorldOwner(worldName, userId) {
   
   await worldOwnersDB.insert({
     worldName,
-    userId,
+    userId, // persist numeric userId
   });
 
   // Also create/update in worlds table
@@ -1091,24 +1091,22 @@ wss.on("connection", async (ws, req) => {
   const worldOwnerId = await getWorldOwner(worldName);
   let ownerInfo = null;
   if (worldOwnerId) {
-    // worldOwnerId is now the player.id (UUID), find the username from current players or users table
+    // worldOwnerId is a persistent userId (numeric)
     let ownerUsername = "Unknown";
     for (const [, p] of players.entries()) {
-      if (p.id === worldOwnerId) {
+      if (p.userId === worldOwnerId) {
         ownerUsername = p.username;
         break;
       }
     }
-    // If player not in current session, try to look up from users table as fallback
     if (ownerUsername === "Unknown") {
-      // Try both numeric ID and UUID lookups
       const ownerUser = await usersDB.findOne({ id: worldOwnerId }).catch(() => null);
       if (ownerUser) {
         ownerUsername = ownerUser.username;
       }
     }
     ownerInfo = { userId: worldOwnerId, username: ownerUsername };
-    console.log(`[${worldName}] World owner info for init:`, { ownerId: worldOwnerId, ownerUsername: ownerUsername, currentPlayerId: player.id });
+    console.log(`[${worldName}] World owner info for init:`, { ownerId: worldOwnerId, ownerUsername: ownerUsername, currentPlayerId: player.id, currentUserId: player.userId });
   }
 
   ws.send(JSON.stringify({
@@ -1284,7 +1282,7 @@ wss.on("connection", async (ws, req) => {
 
         // Check world ownership - owner can build anywhere, non-owners can't build in owned worlds
         const worldOwner = await getWorldOwner(worldName);
-        const isOwner = worldOwner && worldOwner === player.id;
+        const isOwner = worldOwner && worldOwner === player.userId;
         
         if (worldOwner && !isOwner) {
           // World is owned by another player - reject
@@ -1308,8 +1306,8 @@ wss.on("connection", async (ws, req) => {
         // Handle land_lock placement/removal
         if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
           // Placing land_lock - claim the world if not already owned
-          const claimed = await setWorldOwner(worldName, player.id);
-          if (!claimed && worldOwner !== player.id) {
+          const claimed = await setWorldOwner(worldName, player.userId);
+          if (!claimed && worldOwner !== player.userId) {
             send({ type: "error", message: "This world has already been claimed" });
             return;
           }
@@ -1320,7 +1318,7 @@ wss.on("connection", async (ws, req) => {
           console.log(`[${worldName}] Claimed by player ${player.id} (${player.username})`);
           broadcast({ 
             type: "world_owner_set", 
-            userId: player.id,
+            userId: player.userId,
             username: player.username
           }, null, worldName);
         } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
@@ -1355,7 +1353,7 @@ wss.on("connection", async (ws, req) => {
 
         // Check world ownership - only owner can plant seeds
         const worldOwner = await getWorldOwner(worldName);
-        const isOwner = worldOwner && worldOwner === player.id;
+        const isOwner = worldOwner && worldOwner === player.userId;
         
         if (worldOwner && !isOwner) {
           send({ type: "error", message: "Only the world owner can plant seeds" });
