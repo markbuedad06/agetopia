@@ -216,6 +216,7 @@ async function ensureSchema() {
     userId VARCHAR(191) NOT NULL,
     doorX INT DEFAULT 120,
     doorY INT DEFAULT 45,
+    blocksData JSON,
     createdAt DATETIME NOT NULL,
     updatedAt DATETIME NOT NULL,
     INDEX world_user_idx (userId)
@@ -467,24 +468,26 @@ function makeWorldsRepo() {
     findOne: async (query = {}) => {
       const worldName = query.worldName;
       if (!worldName) return undefined;
-      const [rows] = await pool.query("SELECT worldName, userId, doorX, doorY, createdAt, updatedAt FROM worlds WHERE worldName = ? LIMIT 1", [worldName]);
+      const [rows] = await pool.query("SELECT worldName, userId, doorX, doorY, blocksData, createdAt, updatedAt FROM worlds WHERE worldName = ? LIMIT 1", [worldName]);
       return rows[0];
     },
     insert: async (doc) => {
       const createdAt = doc.createdAt || formatDateForMySQL();
       const updatedAt = doc.updatedAt || formatDateForMySQL();
+      const blocksData = doc.blocksData ? JSON.stringify(doc.blocksData) : null;
       await pool.query(
-        "INSERT INTO worlds (worldName, userId, doorX, doorY, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), doorX=VALUES(doorX), doorY=VALUES(doorY), updatedAt=VALUES(updatedAt)",
-        [doc.worldName, doc.userId, doc.doorX || 120, doc.doorY || 45, createdAt, updatedAt]
+        "INSERT INTO worlds (worldName, userId, doorX, doorY, blocksData, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), doorX=VALUES(doorX), doorY=VALUES(doorY), blocksData=VALUES(blocksData), updatedAt=VALUES(updatedAt)",
+        [doc.worldName, doc.userId, doc.doorX || 120, doc.doorY || 45, blocksData, createdAt, updatedAt]
       );
     },
     update: async (filter, doc) => {
       const worldName = filter.worldName || doc.worldName;
       if (!worldName) return;
       const updatedAt = doc.updatedAt || formatDateForMySQL();
+      const blocksData = doc.blocksData ? JSON.stringify(doc.blocksData) : null;
       await pool.query(
-        "UPDATE worlds SET userId=?, doorX=?, doorY=?, updatedAt=? WHERE worldName=?",
-        [doc.userId, doc.doorX, doc.doorY, updatedAt, worldName]
+        "UPDATE worlds SET userId=?, doorX=?, doorY=?, blocksData=?, updatedAt=? WHERE worldName=?",
+        [doc.userId, doc.doorX, doc.doorY, blocksData, updatedAt, worldName]
       );
     },
   };
@@ -801,6 +804,30 @@ async function applyPersistedBlocks(worldName, world) {
     if (inBounds(row.x, row.y)) {
       world[indexOf(row.x, row.y)] = row.tile;
     }
+  }
+}
+
+async function syncBlocksToWorldsTable(worldName) {
+  // Get all blocks for this world from world_blocks table
+  const blocks = await worldDB.find({ worldName });
+  
+  // Store blocks data in worlds table
+  if (blocks.length > 0) {
+    const blocksData = blocks.map(b => ({
+      x: b.x,
+      y: b.y,
+      tile: b.tile
+    }));
+    
+    await worldsDB.update(
+      { worldName },
+      { 
+        worldName,
+        blocksData
+      }
+    ).catch(() => {
+      // World might not exist yet, that's ok
+    });
   }
 }
 
@@ -1248,6 +1275,9 @@ wss.on("connection", async (ws, req) => {
             { upsert: true }
           );
         }
+
+        // Sync blocks to worlds table
+        await syncBlocksToWorldsTable(worldName);
 
         broadcast({ type: "block_update", x, y, tile }, null, worldName);
       } catch (err) {
