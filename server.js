@@ -719,6 +719,11 @@ async function removeLock(worldName, centerX, centerY) {
 }
 
 // Get world owner (from cache or database)
+function normalizeUserId(val) {
+  const num = Number(val);
+  return Number.isFinite(num) ? num : null;
+}
+
 async function getWorldOwner(worldName) {
   // Check cache first
   if (worldOwnersCache.has(worldName)) {
@@ -728,8 +733,9 @@ async function getWorldOwner(worldName) {
   // Query database
   const owner = await worldOwnersDB.findOne({ worldName });
   if (owner) {
-    worldOwnersCache.set(worldName, owner.userId);
-    return owner.userId; // stored as persistent userId (numeric)
+    const uid = normalizeUserId(owner.userId);
+    worldOwnersCache.set(worldName, uid);
+    return uid; // stored as persistent userId (numeric)
   }
   
   return null; // No owner yet
@@ -737,21 +743,22 @@ async function getWorldOwner(worldName) {
 
 // Set world owner (first player to place land_lock claims the world)
 async function setWorldOwner(worldName, userId) {
+  const uid = normalizeUserId(userId);
   // Only set if not already owned
   const existing = await getWorldOwner(worldName);
-  if (existing && existing !== userId) {
+  if (existing && existing !== uid) {
     return false; // World already claimed by someone else
   }
   
   await worldOwnersDB.insert({
     worldName,
-    userId, // persist numeric userId
+    userId: uid, // persist numeric userId
   });
 
   // Also create/update in worlds table
   await worldsDB.insert({
     worldName,
-    userId,
+    userId: uid,
   });
   
   // Update cache
@@ -1312,8 +1319,8 @@ wss.on("connection", async (ws, req) => {
         if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE)) return;  // Allow tiles 0-6 and land_lock(15)
 
         // Check world ownership - owner can build anywhere, non-owners can't build in owned worlds
-        const worldOwner = await getWorldOwner(worldName);
-        const isOwner = worldOwner && worldOwner === player.userId;
+        const worldOwner = normalizeUserId(await getWorldOwner(worldName));
+        const isOwner = worldOwner && worldOwner === normalizeUserId(player.userId);
         
         if (worldOwner && !isOwner) {
           // World is owned by another player - reject
@@ -1338,7 +1345,7 @@ wss.on("connection", async (ws, req) => {
         if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
           // Placing land_lock - claim the world if not already owned
           const claimed = await setWorldOwner(worldName, player.userId);
-          if (!claimed && worldOwner !== player.userId) {
+          if (!claimed && worldOwner !== normalizeUserId(player.userId)) {
             send({ type: "error", message: "This world has already been claimed" });
             return;
           }
@@ -1383,8 +1390,8 @@ wss.on("connection", async (ws, req) => {
         if (!inBounds(x, y)) return;
 
         // Check world ownership - only owner can plant seeds
-        const worldOwner = await getWorldOwner(worldName);
-        const isOwner = worldOwner && worldOwner === player.userId;
+        const worldOwner = normalizeUserId(await getWorldOwner(worldName));
+        const isOwner = worldOwner && worldOwner === normalizeUserId(player.userId);
         
         if (worldOwner && !isOwner) {
           send({ type: "error", message: "Only the world owner can plant seeds" });
