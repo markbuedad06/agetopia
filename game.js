@@ -1268,7 +1268,7 @@ function drawWorld() {
   }
 }
 
-function drawHealthBar(worldX, worldY, health, maxHealth, label) {
+function drawHealthBar(worldX, worldY, health, maxHealth, label, isOwner = false) {
   const px = worldX - camera.x;
   const py = worldY - camera.y;
   const barW = 44;
@@ -1279,9 +1279,14 @@ function drawHealthBar(worldX, worldY, health, maxHealth, label) {
   ctx.fillStyle = ratio > 0.35 ? "#4ade80" : "#ef4444";
   ctx.fillRect(px - 10, py - 16, Math.floor(barW * ratio), 6);
 
-  ctx.font = "14px Trebuchet MS";
+  if (isOwner) {
+    ctx.font = "14px Trebuchet MS";
+    ctx.fillStyle = "#00ff00";
+  } else {
+    ctx.font = "10px Trebuchet MS";
+    ctx.fillStyle = "#ffffff";
+  }
   ctx.textAlign = "center";
-  ctx.fillStyle = "#00ff00";
   ctx.fillText(label, px + 12, py - 19);
 }
 
@@ -1319,7 +1324,8 @@ function drawRemotePlayers() {
   remotePlayers.forEach((p) => {
     const attackStrength = Math.max(0, (p.punchUntil || 0) - currentNow) / PUNCH_ANIM_MS;
     drawPlayerBody(p.x, p.y, p.facing, "#73318e", attackStrength);
-    drawHealthBar(p.x, p.y, p.health ?? MAX_HEALTH, p.maxHealth ?? MAX_HEALTH, p.username);
+    const isOwner = worldOwner && p.id === worldOwner.userId;
+    drawHealthBar(p.x, p.y, p.health ?? MAX_HEALTH, p.maxHealth ?? MAX_HEALTH, p.username, isOwner);
   });
 }
 
@@ -2207,7 +2213,8 @@ function draw() {
   }
   const attackStrength = Math.max(0, player.punchUntil - currentNow) / PUNCH_ANIM_MS;
   drawPlayerBody(player.x, player.y, player.facing, "#1f3b7c", attackStrength);
-  drawHealthBar(player.x, player.y, player.health, player.maxHealth, networkState.username || "You");
+  const playerIsOwner = worldOwner && networkState.userId === worldOwner.userId;
+  drawHealthBar(player.x, player.y, player.health, player.maxHealth, networkState.username || "You", playerIsOwner);
   drawRemotePlayers();
   drawDrops();
   drawSelection();
