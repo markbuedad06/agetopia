@@ -213,10 +213,9 @@ async function ensureSchema() {
 
   await pool.query(`CREATE TABLE IF NOT EXISTS worlds (
     worldName VARCHAR(64) PRIMARY KEY,
-    userId VARCHAR(191),
+    userId VARCHAR(191) NOT NULL,
     doorX INT DEFAULT 120,
     doorY INT DEFAULT 45,
-    blocksData JSON,
     createdAt DATETIME NOT NULL,
     updatedAt DATETIME NOT NULL,
     INDEX world_user_idx (userId)
@@ -468,37 +467,24 @@ function makeWorldsRepo() {
     findOne: async (query = {}) => {
       const worldName = query.worldName;
       if (!worldName) return undefined;
-      const [rows] = await pool.query("SELECT worldName, userId, doorX, doorY, blocksData, createdAt, updatedAt FROM worlds WHERE worldName = ? LIMIT 1", [worldName]);
-      if (!rows[0]) return undefined;
-      const row = rows[0];
-      // Parse blocksData if it exists
-      if (row.blocksData) {
-        try {
-          row.blocksData = typeof row.blocksData === 'string' ? JSON.parse(row.blocksData) : row.blocksData;
-        } catch (err) {
-          console.error(`Error parsing blocksData for world ${worldName}:`, err);
-          row.blocksData = null;
-        }
-      }
-      return row;
+      const [rows] = await pool.query("SELECT worldName, userId, doorX, doorY, createdAt, updatedAt FROM worlds WHERE worldName = ? LIMIT 1", [worldName]);
+      return rows[0];
     },
     insert: async (doc) => {
       const createdAt = doc.createdAt || formatDateForMySQL();
       const updatedAt = doc.updatedAt || formatDateForMySQL();
-      const blocksData = doc.blocksData ? JSON.stringify(doc.blocksData) : null;
       await pool.query(
-        "INSERT INTO worlds (worldName, userId, doorX, doorY, blocksData, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), doorX=VALUES(doorX), doorY=VALUES(doorY), blocksData=VALUES(blocksData), updatedAt=VALUES(updatedAt)",
-        [doc.worldName, doc.userId, doc.doorX || 120, doc.doorY || 45, blocksData, createdAt, updatedAt]
+        "INSERT INTO worlds (worldName, userId, doorX, doorY, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), doorX=VALUES(doorX), doorY=VALUES(doorY), updatedAt=VALUES(updatedAt)",
+        [doc.worldName, doc.userId, doc.doorX || 120, doc.doorY || 45, createdAt, updatedAt]
       );
     },
     update: async (filter, doc) => {
       const worldName = filter.worldName || doc.worldName;
       if (!worldName) return;
       const updatedAt = doc.updatedAt || formatDateForMySQL();
-      const blocksData = doc.blocksData ? JSON.stringify(doc.blocksData) : null;
       await pool.query(
-        "UPDATE worlds SET userId=?, doorX=?, doorY=?, blocksData=?, updatedAt=? WHERE worldName=?",
-        [doc.userId, doc.doorX, doc.doorY, blocksData, updatedAt, worldName]
+        "UPDATE worlds SET userId=?, doorX=?, doorY=?, updatedAt=? WHERE worldName=?",
+        [doc.userId, doc.doorX, doc.doorY, updatedAt, worldName]
       );
     },
   };
@@ -701,44 +687,26 @@ async function getWorldOwner(worldName) {
 
 // Set world owner (first player to place land_lock claims the world)
 async function setWorldOwner(worldName, userId) {
-  try {
-    // Only set if not already owned
-    const existing = await getWorldOwner(worldName);
-    if (existing && existing !== userId) {
-      return false; // World already claimed by someone else
-    }
-    
-    console.log(`Setting world owner for ${worldName} to ${userId}`);
-    await worldOwnersDB.insert({
-      worldName,
-      userId,
-    });
-    console.log(`Updated worldOwnersDB for ${worldName}`);
-
-    // Also update in worlds table - use UPDATE directly to preserve existing data
-    const existing_world = await worldsDB.findOne({ worldName }).catch(() => null);
-    if (existing_world) {
-      console.log(`Updating existing worlds entry for ${worldName}`);
-      await pool.query(
-        "UPDATE worlds SET userId=?, updatedAt=? WHERE worldName=?",
-        [userId, formatDateForMySQL(), worldName]
-      );
-    } else {
-      console.log(`Creating new worlds entry for ${worldName}`);
-      await worldsDB.insert({
-        worldName,
-        userId,
-      });
-    }
-    console.log(`Updated worldsDB for ${worldName}`);
-    
-    // Update cache
-    worldOwnersCache.set(worldName, userId);
-    return true; // Successfully claimed
-  } catch (err) {
-    console.error(`Error in setWorldOwner(${worldName}, ${userId}):`, err);
-    throw err;
+  // Only set if not already owned
+  const existing = await getWorldOwner(worldName);
+  if (existing && existing !== userId) {
+    return false; // World already claimed by someone else
   }
+  
+  await worldOwnersDB.insert({
+    worldName,
+    userId,
+  });
+
+  // Also create/update in worlds table
+  await worldsDB.insert({
+    worldName,
+    userId,
+  });
+  
+  // Update cache
+  worldOwnersCache.set(worldName, userId);
+  return true; // Successfully claimed
 }
 
 function createToken(user) {
@@ -833,34 +801,6 @@ async function applyPersistedBlocks(worldName, world) {
     if (inBounds(row.x, row.y)) {
       world[indexOf(row.x, row.y)] = row.tile;
     }
-  }
-}
-
-async function syncBlocksToWorldsTable(worldName) {
-  try {
-    // Get all blocks for this world from world_blocks table
-    const blocks = await worldDB.find({ worldName });
-    
-    // Store blocks data in worlds table
-    if (blocks.length > 0) {
-      const blocksData = blocks.map(b => ({
-        x: b.x,
-        y: b.y,
-        tile: b.tile
-      }));
-      
-      // Get existing world entry to preserve other data
-      const existing = await worldsDB.findOne({ worldName }).catch(() => null);
-      if (existing) {
-        // Update existing entry with new blocks
-        await pool.query(
-          "UPDATE worlds SET blocksData=?, updatedAt=? WHERE worldName=?",
-          [JSON.stringify(blocksData), formatDateForMySQL(), worldName]
-        );
-      }
-    }
-  } catch (err) {
-    console.error("Error syncing blocks to worlds table:", err);
   }
 }
 
@@ -1021,9 +961,14 @@ wss.on("connection", async (ws, req) => {
     worldCache_entry.loaded = true;
   }
 
-  // Ensure world exists in worlds table (create with NULL owner if new)
-  // This is now handled lazily by setWorldOwner when land_lock is placed
-  // So we don't need to pre-create it here
+  // Ensure world exists in worlds table (create with default owner if new)
+  const existingWorld = await worldsDB.findOne({ worldName });
+  if (!existingWorld) {
+    await worldsDB.insert({
+      worldName,
+      userId: "", // Will be set when someone places land_lock
+    });
+  }
 
   const others = [];
   for (const [id, p] of players.entries()) {
@@ -1272,42 +1217,25 @@ wss.on("connection", async (ws, req) => {
         
         // Handle land_lock placement/removal
         if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
-          try {
-            // Placing land_lock - claim the world if not already owned
-            console.log(`[${worldName}] Player ${player.id} (${player.username}) placing land_lock at ${x},${y}`);
-            const claimed = await setWorldOwner(worldName, player.id);
-            console.log(`[${worldName}] setWorldOwner result: ${claimed}`);
-            
-            if (!claimed && worldOwner !== player.id) {
-              console.log(`[${worldName}] World already claimed by ${worldOwner}`);
-              send({ type: "error", message: "This world has already been claimed" });
-              return;
-            }
-            
-            // Create a lock around this land_lock
-            console.log(`[${worldName}] Creating lock at ${x},${y}`);
-            await createLock(worldName, x, y, player.id);
-            
-            // Broadcast world owner info to all players in world
-            console.log(`[${worldName}] Claimed by player ${player.id} (${player.username})`);
-            broadcast({ 
-              type: "world_owner_set", 
-              userId: player.id,
-              username: player.username
-            }, null, worldName);
-          } catch (lockErr) {
-            console.error(`[${worldName}] Error placing land_lock at ${x},${y}:`, lockErr);
-            send({ type: "error", message: "Failed to place lock: " + (lockErr.message || "Unknown error") });
+          // Placing land_lock - claim the world if not already owned
+          const claimed = await setWorldOwner(worldName, player.id);
+          if (!claimed && worldOwner !== player.id) {
+            send({ type: "error", message: "This world has already been claimed" });
             return;
           }
+          // Create a lock around this land_lock
+          await createLock(worldName, x, y, player.id);
+          
+          // Broadcast world owner info to all players in world
+          console.log(`[${worldName}] Claimed by player ${player.id} (${player.username})`);
+          broadcast({ 
+            type: "world_owner_set", 
+            userId: player.id,
+            username: player.username
+          }, null, worldName);
         } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
-          try {
-            // Removing land_lock - remove the lock
-            console.log(`[${worldName}] Removing lock at ${x},${y}`);
-            await removeLock(worldName, x, y);
-          } catch (lockErr) {
-            console.error(`[${worldName}] Error removing lock at ${x},${y}:`, lockErr);
-          }
+          // Removing land_lock - remove the lock
+          await removeLock(worldName, x, y);
         }
         
         world[indexOf(x, y)] = tile;
@@ -1320,9 +1248,6 @@ wss.on("connection", async (ws, req) => {
             { upsert: true }
           );
         }
-
-        // Don't sync blocks on every update - world_blocks table is the source of truth
-        // blocksData in worlds table is just a Cache for occasional snapshots
 
         broadcast({ type: "block_update", x, y, tile }, null, worldName);
       } catch (err) {
