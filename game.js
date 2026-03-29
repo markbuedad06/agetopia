@@ -807,6 +807,14 @@ function tryBreak(dt) {
     return;
   }
 
+  // Only allow breaking if punch mode is selected (-1 means punch mode)
+  if (selectedSlot !== -1) {
+    breakState.progress = 0;
+    breakState.targetX = -1;
+    breakState.targetY = -1;
+    return;
+  }
+
   const { tx, ty } = screenToWorldTile(mouseX, mouseY);
   if (!inBounds(tx, ty) || !canReach(tx, ty)) {
     breakState.progress = 0;
