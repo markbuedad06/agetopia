@@ -1873,6 +1873,26 @@ function pickupDrop(drop) {
     inventory[itemId] = 0;
   }
   inventory[itemId] = Math.min(INVENTORY_STACK_LIMIT, inventory[itemId] + 1);
+  
+  // For seeds and blocks, move them to quick slots (first 5) if they're not already there
+  const isSeed = itemId >= 9 && itemId <= 14;
+  const isBlock = itemId >= 0 && itemId <= 7;
+  
+  if (isSeed || isBlock) {
+    const currentIndex = hotbarOrder.indexOf(itemId);
+    
+    if (currentIndex >= 5) {
+      // Item exists in hotbar but is past quick slots (position 5+)
+      // Move it to the front so it appears in quick slots
+      hotbarOrder.splice(currentIndex, 1);
+      hotbarOrder.unshift(itemId);
+    } else if (currentIndex === -1) {
+      // Item not in hotbar, add to front of quick slots
+      hotbarOrder.unshift(itemId);
+    }
+    // If already in positions 0-4, no change needed
+  }
+  
   saveInventoryItems();
   if (ONLINE_MODE && networkState.connected) {
     sendSocket({ type: "drop_collect", id: drop.id });
