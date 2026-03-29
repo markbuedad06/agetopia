@@ -375,13 +375,19 @@ function loadInventoryItems() {
       for (let seed = 9; seed <= 14; seed++) {
         inventory[seed] = Math.min(INVENTORY_STACK_LIMIT, loaded[seed] || 0);
       }
+      inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 1);
     }
   } catch (err) {
     console.error("Failed to load inventory", err);
   }
   
+  // Ensure land_lock is always at least 1
+  if (!inventory[15] || inventory[15] < 1) {
+    inventory[15] = 1;
+  }
+  
   // Remove ALL keys that aren't in the valid list
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
   for (const key in inventory) {
     const numKey = parseInt(key);
     if (!validKeys.includes(numKey)) {
@@ -396,7 +402,7 @@ function applyInventoryFromServer(serverInv) {
     loadInventoryItems();
     return;
   }
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
   validKeys.forEach((k) => {
     const val = Number(serverInv[k]);
     if (Number.isFinite(val) && val >= 0) {
@@ -405,6 +411,12 @@ function applyInventoryFromServer(serverInv) {
       inventory[k] = 0;
     }
   });
+  
+  // Ensure land_lock is always at least 1 for all players
+  if (!inventory[15] || inventory[15] < 1) {
+    inventory[15] = 1;
+  }
+  
   // Persist to per-user storage for offline continuity
   saveInventoryItems();
 }
