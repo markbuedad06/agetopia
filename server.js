@@ -946,11 +946,24 @@ wss.on("connection", async (ws, req) => {
   const worldOwnerId = await getWorldOwner(worldName);
   let ownerInfo = null;
   if (worldOwnerId) {
-    const ownerUser = await usersDB.findOne({ id: worldOwnerId });
-    if (ownerUser) {
-      ownerInfo = { userId: worldOwnerId, username: ownerUser.username };
-      console.log(`[${worldName}] World owner info for init:`, { ownerId: worldOwnerId, ownerUsername: ownerUser.username, currentPlayerId: player.id });
+    // worldOwnerId is now the player.id (UUID), find the username from current players or users table
+    let ownerUsername = "Unknown";
+    for (const [, p] of players.entries()) {
+      if (p.id === worldOwnerId) {
+        ownerUsername = p.username;
+        break;
+      }
     }
+    // If player not in current session, try to look up from users table as fallback
+    if (ownerUsername === "Unknown") {
+      // Try both numeric ID and UUID lookups
+      const ownerUser = await usersDB.findOne({ id: worldOwnerId }).catch(() => null);
+      if (ownerUser) {
+        ownerUsername = ownerUser.username;
+      }
+    }
+    ownerInfo = { userId: worldOwnerId, username: ownerUsername };
+    console.log(`[${worldName}] World owner info for init:`, { ownerId: worldOwnerId, ownerUsername: ownerUsername, currentPlayerId: player.id });
   }
 
   ws.send(JSON.stringify({
@@ -1126,7 +1139,7 @@ wss.on("connection", async (ws, req) => {
 
         // Check world ownership - owner can build anywhere, non-owners can't build in owned worlds
         const worldOwner = await getWorldOwner(worldName);
-        const isOwner = worldOwner && worldOwner === player.userId;
+        const isOwner = worldOwner && worldOwner === player.id;
         
         if (worldOwner && !isOwner) {
           // World is owned by another player - reject
@@ -1150,19 +1163,19 @@ wss.on("connection", async (ws, req) => {
         // Handle land_lock placement/removal
         if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
           // Placing land_lock - claim the world if not already owned
-          const claimed = await setWorldOwner(worldName, player.userId);
-          if (!claimed && worldOwner !== player.userId) {
+          const claimed = await setWorldOwner(worldName, player.id);
+          if (!claimed && worldOwner !== player.id) {
             send({ type: "error", message: "This world has already been claimed" });
             return;
           }
           // Create a lock around this land_lock
-          await createLock(worldName, x, y, player.userId);
+          await createLock(worldName, x, y, player.id);
           
           // Broadcast world owner info to all players in world
           console.log(`[${worldName}] Claimed by player ${player.id} (${player.username})`);
           broadcast({ 
             type: "world_owner_set", 
-            userId: player.userId,
+            userId: player.id,
             username: player.username
           }, null, worldName);
         } else if (tile === 0 && oldTile === LAND_LOCK_TILE) {
@@ -1197,7 +1210,7 @@ wss.on("connection", async (ws, req) => {
 
         // Check world ownership - only owner can plant seeds
         const worldOwner = await getWorldOwner(worldName);
-        const isOwner = worldOwner && worldOwner === player.userId;
+        const isOwner = worldOwner && worldOwner === player.id;
         
         if (worldOwner && !isOwner) {
           send({ type: "error", message: "Only the world owner can plant seeds" });
