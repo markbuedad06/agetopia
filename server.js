@@ -1095,18 +1095,18 @@ wss.on("connection", async (ws, req) => {
     const right = Math.floor((p.x + pW) / TILE);
     const top = Math.floor(p.y / TILE);
     const bottom = Math.floor((p.y + pH) / TILE);
+    const scanLeft = Math.max(0, left - 1);
+    const scanRight = Math.min(WORLD_WIDTH - 1, right + 1);
+    const scanTop = Math.max(0, top - 1);
+    const scanBottom = Math.min(WORLD_HEIGHT - 1, bottom + 1);
     const worldArr = getOrCreateWorldArray(worldName);
 
-    for (let ty = top; ty <= bottom; ty += 1) {
-      for (let tx = left; tx <= right; tx += 1) {
+    for (let ty = scanTop; ty <= scanBottom; ty += 1) {
+      for (let tx = scanLeft; tx <= scanRight; tx += 1) {
         if (!inBounds(tx, ty)) continue;
-        if (worldArr[indexOf(tx, ty)] !== LAVA_TILE) continue;
-
-        const tileX = tx * TILE;
-        const tileY = ty * TILE;
-        const xOverlap = (p.x + pW) >= tileX && p.x <= tileX + TILE;
-        const yOverlap = (p.y + pH) >= tileY && p.y <= tileY + TILE;
-        if (xOverlap && yOverlap) return { tx, ty };
+        if (worldArr[indexOf(tx, ty)] === LAVA_TILE) {
+          return { tx, ty };
+        }
       }
     }
     return null;

@@ -2469,9 +2469,13 @@ function handleLavaDamage(now) {
   const bounds = getPlayerTileBounds();
   const pW = player.w;
   const pH = player.h;
+  const scanLeft = Math.max(0, bounds.left - 1);
+  const scanRight = Math.min(WORLD_WIDTH - 1, bounds.right + 1);
+  const scanTop = Math.max(0, bounds.top - 1);
+  const scanBottom = Math.min(WORLD_HEIGHT - 1, bounds.bottom + 1);
   let lavaHit = null;
-  for (let ty = bounds.top; ty <= bounds.bottom; ty += 1) {
-    for (let tx = bounds.left; tx <= bounds.right; tx += 1) {
+  for (let ty = scanTop; ty <= scanBottom; ty += 1) {
+    for (let tx = scanLeft; tx <= scanRight; tx += 1) {
       if (getTile(tx, ty) !== LAVA_TILE) continue;
       const tileX = tx * TILE;
       const tileY = ty * TILE;
