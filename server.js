@@ -61,6 +61,7 @@ let growingPlantsDB;
 let inventoriesDB;
 let lockedAreasDB;
 let worldOwnersDB;
+let worldsDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 const lockedAreasCache = new Map(); // worldName -> Array of locked areas
@@ -208,6 +209,16 @@ async function ensureSchema() {
     userId VARCHAR(191) NOT NULL,
     createdAt DATETIME NOT NULL,
     UNIQUE INDEX owner_user_idx (userId, worldName)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS worlds (
+    worldName VARCHAR(64) PRIMARY KEY,
+    userId VARCHAR(191) NOT NULL,
+    doorX INT DEFAULT 120,
+    doorY INT DEFAULT 45,
+    createdAt DATETIME NOT NULL,
+    updatedAt DATETIME NOT NULL,
+    INDEX world_user_idx (userId)
   )`);
 }
 
@@ -451,6 +462,34 @@ function makeWorldOwnersRepo() {
   };
 }
 
+function makeWorldsRepo() {
+  return {
+    findOne: async (query = {}) => {
+      const worldName = query.worldName;
+      if (!worldName) return undefined;
+      const [rows] = await pool.query("SELECT worldName, userId, doorX, doorY, createdAt, updatedAt FROM worlds WHERE worldName = ? LIMIT 1", [worldName]);
+      return rows[0];
+    },
+    insert: async (doc) => {
+      const createdAt = doc.createdAt || formatDateForMySQL();
+      const updatedAt = doc.updatedAt || formatDateForMySQL();
+      await pool.query(
+        "INSERT INTO worlds (worldName, userId, doorX, doorY, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), doorX=VALUES(doorX), doorY=VALUES(doorY), updatedAt=VALUES(updatedAt)",
+        [doc.worldName, doc.userId, doc.doorX || 120, doc.doorY || 45, createdAt, updatedAt]
+      );
+    },
+    update: async (filter, doc) => {
+      const worldName = filter.worldName || doc.worldName;
+      if (!worldName) return;
+      const updatedAt = doc.updatedAt || formatDateForMySQL();
+      await pool.query(
+        "UPDATE worlds SET userId=?, doorX=?, doorY=?, updatedAt=? WHERE worldName=?",
+        [doc.userId, doc.doorX, doc.doorY, updatedAt, worldName]
+      );
+    },
+  };
+}
+
 async function initStores() {
   pool = buildPoolFromUrl();
   await ensureSchema();
@@ -461,6 +500,7 @@ async function initStores() {
   inventoriesDB = makeInventoriesRepo();
   lockedAreasDB = makeLockedAreasRepo();
   worldOwnersDB = makeWorldOwnersRepo();
+  worldsDB = makeWorldsRepo();
   
   // Run migration to convert inventory from ID-based to name-based
   await migrateInventoryToNames();
@@ -654,6 +694,12 @@ async function setWorldOwner(worldName, userId) {
   }
   
   await worldOwnersDB.insert({
+    worldName,
+    userId,
+  });
+
+  // Also create/update in worlds table
+  await worldsDB.insert({
     worldName,
     userId,
   });
@@ -913,6 +959,15 @@ wss.on("connection", async (ws, req) => {
   if (!worldCache_entry.loaded) {
     await applyPersistedBlocks(worldName, world);
     worldCache_entry.loaded = true;
+  }
+
+  // Ensure world exists in worlds table (create with default owner if new)
+  const existingWorld = await worldsDB.findOne({ worldName });
+  if (!existingWorld) {
+    await worldsDB.insert({
+      worldName,
+      userId: "", // Will be set when someone places land_lock
+    });
   }
 
   const others = [];
