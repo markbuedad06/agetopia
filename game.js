@@ -977,6 +977,10 @@ function sendChatMessage() {
     addChatBubble(playerId, text);
   }
   sendSocket({ type: "chat", text });
+
+  // Always close the chat panel after sending
+  chatBar?.classList.add("hidden");
+  chatInput?.blur();
 }
 
 function tryBreak(dt) {
