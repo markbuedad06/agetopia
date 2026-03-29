@@ -1269,13 +1269,6 @@ wss.on("connection", async (ws, req) => {
     }
 
     if (msg.type === "drop_collect") {
-      // Check world ownership before allowing item collection
-      const worldOwner = await getWorldOwner(worldName);
-      if (worldOwner && worldOwner !== player.userId) {
-        send({ type: "error", message: "This world is owned by another player" });
-        return;
-      }
-
       const dropId = String(msg.id || "");
       const dropsMap = getWorldDrops(worldName);
       dropsMap.delete(dropId);
