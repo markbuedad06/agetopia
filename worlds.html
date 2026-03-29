@@ -12,6 +12,11 @@
       <h1>World Hub</h1>
       <p class="login-subtitle">Claimed worlds you can join.</p>
 
+      <div class="world-actions">
+        <input id="searchWorldName" type="text" placeholder="enter a world name" maxlength="24" aria-label="World name" />
+        <button id="searchWorldBtn" type="button">Create / Find</button>
+      </div>
+
       <div id="worldList" class="world-list world-grid"></div>
 
       <div class="login-actions">
@@ -30,6 +35,9 @@
     const playDefaultBtn = document.getElementById("playDefaultBtn");
     const logoutBtn = document.getElementById("logoutBtn");
     const worldMessageEl = document.getElementById("worldMessage");
+    const searchWorldNameEl = document.getElementById("searchWorldName");
+    const searchWorldBtn = document.getElementById("searchWorldBtn");
+    let claimedWorlds = [];
 
     function authHeader() {
       const token = localStorage.getItem(TOKEN_KEY) || "";
@@ -116,15 +124,42 @@
       });
     }
 
+    function filterAndRender(query) {
+      const q = String(query || "").trim().toLowerCase();
+      const filtered = q
+        ? claimedWorlds.filter((w) => String(w.worldName || "").toLowerCase().includes(q))
+        : claimedWorlds;
+      renderClaimedWorlds(filtered);
+      setMessage(filtered.length ? "Choose a world to enter." : q ? "No matches found." : "No claimed worlds yet.");
+    }
+
+    function handleSearchJoin() {
+      const world = normalizeWorldName(searchWorldNameEl.value);
+      if (!world) {
+        setMessage("Enter a world name first.");
+        return;
+      }
+      setMessage(`Joining ${world}...`);
+      joinWorld(world);
+    }
+
     async function init() {
       requireSession();
-      const worlds = await fetchClaimedWorlds();
-      renderClaimedWorlds(worlds);
-      setMessage(worlds.length ? "Choose a world to enter." : "No claimed worlds yet.");
+      claimedWorlds = await fetchClaimedWorlds();
+      filterAndRender(searchWorldNameEl.value);
     }
 
     requireSession();
     init();
+
+    searchWorldBtn.addEventListener("click", handleSearchJoin);
+    searchWorldNameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleSearchJoin();
+      }
+    });
+    searchWorldNameEl.addEventListener("input", () => filterAndRender(searchWorldNameEl.value));
   </script>
 </body>
 </html>
