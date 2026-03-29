@@ -1088,43 +1088,29 @@ function tryBreak(dt) {
     // Check if breaking a tree (growing or mature)
     if (plant) {
       if (plant.fullGrown) {
-        // Harvest mature tree - spawn blocks
+        // Harvest mature tree - guarantee a seed (when known) plus block drops
         const dropX = tx * TILE + TILE / 2;
         const dropY = ty * TILE + TILE / 2;
         const sourceBlock = plant.sourceBlock;
         const dropCount = plant.dropCount;
-        
-        // Drop all the blocks
+        const seedItem = plant.seedItem ?? (sourceBlock === LAVA_TILE ? 17 : 8 + sourceBlock);
+
+        const dropItems = [];
+        if (seedItem) dropItems.push(seedItem);
         for (let i = 0; i < dropCount; i++) {
+          dropItems.push(sourceBlock);
+        }
+
+        for (let i = 0; i < dropItems.length; i++) {
           const dropId = makeDropId();
-          const angle = (i / dropCount) * Math.PI * 2;
+          const angle = (i / Math.max(1, dropItems.length)) * Math.PI * 2;
           const drop = {
             id: dropId,
-            tile: sourceBlock,
+            tile: dropItems[i],
             x: dropX + Math.cos(angle) * 10,
             y: dropY + Math.sin(angle) * 10,
             vx: Math.cos(angle) * 150,
             vy: Math.sin(angle) * 150 - 150,
-            floatY: dropY,
-            floatTime: 0,
-          };
-          drops.set(dropId, drop);
-          if (ONLINE_MODE && networkState.connected) {
-            sendSocket({ type: "drop_spawn", ...drop });
-          }
-        }
-        
-        // Low chance to also drop 1 seed
-        const seedItem = plant.seedItem ?? (sourceBlock === LAVA_TILE ? 17 : 8 + sourceBlock);
-        if (seedItem && Math.random() < 0.25) {
-          const dropId = makeDropId();
-          const drop = {
-            id: dropId,
-            tile: seedItem,
-            x: dropX,
-            y: dropY,
-            vx: (Math.random() - 0.5) * 200,
-            vy: -150,
             floatY: dropY,
             floatTime: 0,
           };
@@ -1602,26 +1588,33 @@ function drawGrowingPlants() {
       const centerY = drawY + TILE / 2;
 
       if (plant.sourceBlock === LAVA_TILE) {
-        // Lava growth: bubbling magma orb with pulse
-        const pulse = 0.35 + 0.65 * Math.sin(performance.now() / 220 + x * 0.1 + y * 0.1);
-        const radius = 6 + progress * 6 + pulse;
-        const innerRadius = Math.max(4, radius * 0.55);
+        // Lava growth: fiery tree-style crown with orange flicker
+        const flicker = 1 + Math.sin(performance.now() / 150 + x * 0.35 + y * 0.25) * 0.25;
+        const trunkHeight = 8;
+        const baseRadius = 7 + progress * 6;
+        const crownRadius = baseRadius * flicker;
 
-        const grd = ctx.createRadialGradient(centerX, centerY, innerRadius * 0.2, centerX, centerY, radius);
-        grd.addColorStop(0, "#ffd08a");
-        grd.addColorStop(0.45, "#ff7a3c");
-        grd.addColorStop(1, "#b62323");
+        // Draw charred trunk
+        ctx.fillStyle = "#5a2d0c";
+        ctx.fillRect(centerX - 2, centerY + 3, 4, trunkHeight);
+
+        // Fiery crown gradient
+        const grd = ctx.createRadialGradient(centerX, centerY - 3, crownRadius * 0.2, centerX, centerY - 3, crownRadius);
+        grd.addColorStop(0, "#ffe7b8");
+        grd.addColorStop(0.45, "#ffb347");
+        grd.addColorStop(0.8, "#ff6b2c");
+        grd.addColorStop(1, "#c43114");
 
         ctx.fillStyle = grd;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY - 3, crownRadius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Rim glow
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-        ctx.lineWidth = 1.4;
+        // Outer glow line for heat shimmer
+        ctx.strokeStyle = "rgba(255, 196, 128, 0.45)";
+        ctx.lineWidth = 1.2;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius * 0.85, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY - 3, crownRadius * 0.9, 0, Math.PI * 2);
         ctx.stroke();
       } else {
         const sourceTileDef = tileDefs[plant.sourceBlock];
@@ -2424,7 +2417,7 @@ function drawDrops() {
     const py = drop.y - camera.y;
     const bobOffset = Math.sin(drop.floatTime * 3) * 3;
     
-    // Use itemDefs to get color (handles both blocks and seeds)
+    // Use itemDefs to get color/icon (handles both blocks and seeds)
     const def = itemDefs[drop.tile] || tileDefs[drop.tile];
     
     if (!def) continue; // Skip if item/tile doesn't exist
@@ -2432,21 +2425,38 @@ function drawDrops() {
     ctx.save();
     ctx.globalAlpha = 0.9;
     
-    const isSeed = drop.tile >= 9 && drop.tile <= 14;
+    const isSeed = isSeedItem(drop.tile);
+    const isLavaSeed = drop.tile === 17;
     
     if (isSeed) {
-      // Draw seeds as ovals
-      const width = 14;
-      const height = 20;
-      ctx.fillStyle = def.color;
-      ctx.beginPath();
-      ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
-      ctx.fill();
+      if (isLavaSeed && def.icon) {
+        const img = getTexture(def.icon);
+        if (img && img.complete && img.naturalWidth > 0) {
+          const size = 22;
+          ctx.drawImage(img, px - size / 2, py - size / 2 + bobOffset, size, size);
+        } else {
+          // Fallback while icon loads
+          const width = 14;
+          const height = 20;
+          ctx.fillStyle = def.color;
+          ctx.beginPath();
+          ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // Draw other seeds as ovals
+        const width = 14;
+        const height = 20;
+        ctx.fillStyle = def.color;
+        ctx.beginPath();
+        ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.ellipse(px, py - 2 + bobOffset, width / 2, height / 2, 0, 0, Math.PI * 2);
+      ctx.ellipse(px, py - 2 + bobOffset, 7, 10, 0, 0, Math.PI * 2);
       ctx.stroke();
     } else {
       // Draw blocks as squares
