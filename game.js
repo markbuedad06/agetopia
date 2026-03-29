@@ -109,7 +109,7 @@ const inventory = {
   12: 0,
   13: 0,
   14: 0,
-  15: 1, // Land Lock - 1 per player
+  15: 0,
 };
 
 let selectedSlot = 0;
@@ -358,8 +358,6 @@ function redirectToLogin(reason) {
   manualDisconnect = true;
   clearTimeout(reconnectTimer);
   reconnectTimer = null;
-  clearInterval(pingInterval);
-  pingInterval = null;
   if (reason) {
     sessionStorage.setItem("agetopia_login_notice", reason);
   }
@@ -443,12 +441,7 @@ function loadInventoryItems() {
     if (saved) {
       const loaded = JSON.parse(saved);
       
-      // Check if loaded data is missing land_lock - if so, clear it to reset
-      if (loaded && !loaded.hasOwnProperty('15')) {
-        console.log("Old inventory data detected (no land_lock), clearing to reset");
-        localStorage.removeItem(key);
-        saved = null; // Treat as if no save exists
-      } else if (saved) {
+      if (saved) {
         for (let item = 1; item <= 6; item++) {
           inventory[item] = Math.min(INVENTORY_STACK_LIMIT, loaded[item] || 0);
         }
@@ -456,17 +449,11 @@ function loadInventoryItems() {
         for (let seed = 9; seed <= 14; seed++) {
           inventory[seed] = Math.min(INVENTORY_STACK_LIMIT, loaded[seed] || 0);
         }
-        inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 1);
+        inventory[15] = Math.min(INVENTORY_STACK_LIMIT, loaded[15] || 0);
       }
     }
   } catch (err) {
     console.error("Failed to load inventory", err);
-  }
-  
-  // FORCE ensure land_lock is always at least 1
-  if (!inventory[15] || inventory[15] < 1) {
-    console.log("Ensuring player has land_lock...");
-    inventory[15] = 1;
   }
   
   // Remove ALL keys that aren't in the valid list
@@ -479,7 +466,7 @@ function loadInventoryItems() {
     }
   }
   
-  // Save updated inventory to ensure land_lock is persisted
+  // Save updated inventory to persist
   saveInventoryItems();
 }
 
@@ -513,12 +500,6 @@ function applyInventoryFromServer(serverInv) {
         inventory[itemId] = 0;
       }
     }
-  }
-  
-  // FORCE ensure land_lock is always at least 1 for all players
-  if (!inventory[15] || inventory[15] < 1) {
-    console.log("Server inventory missing land_lock, adding...");
-    inventory[15] = 1;
   }
   
   // Persist to per-user storage for offline continuity
@@ -2199,9 +2180,10 @@ function resetInventoryState() {
   inventory[12] = 0;
   inventory[13] = 0;
   inventory[14] = 0;
+  inventory[15] = 0;
   
   // Remove any stray keys
-  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14];
+  const validKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15];
   for (const key in inventory) {
     if (!validKeys.includes(parseInt(key))) {
       delete inventory[key];
