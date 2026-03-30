@@ -281,9 +281,8 @@ body {
 .chat-history-panel {
   position: fixed;
   top: 64px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(620px, 80vw);
+  left: 14px;
+  width: min(520px, 70vw);
   max-height: 180px;
   padding: 0.55rem 0.65rem;
   border: 1px solid #5e4c7e;
