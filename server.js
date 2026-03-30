@@ -1317,12 +1317,6 @@ wss.on("connection", async (ws, req) => {
     ws,
   };
 
-  // Helper to send a message to this socket safely
-  const send = (payload) => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify(payload));
-  };
-
   players.set(playerId, player);
   if (!worldPlayers.has(worldName)) worldPlayers.set(worldName, []);
   worldPlayers.get(worldName).push(playerId);
@@ -1335,6 +1329,15 @@ wss.on("connection", async (ws, req) => {
   }
 
   await ensureDropsLoaded(worldName);
+
+  const send = (payload) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(JSON.stringify(payload));
+    } catch (err) {
+      console.error("Failed to send to client:", err);
+    }
+  };
 
   function touchesLavaTile(p) {
     const pW = 24;
@@ -1559,13 +1562,12 @@ wss.on("connection", async (ws, req) => {
   }, player.id, worldName);
 
   ws.on("message", async (raw) => {
+    let msg;
     try {
-      let msg;
-      try {
-        msg = JSON.parse(raw.toString());
-      } catch {
-        return;
-      }
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
 
     if (msg.type === "player_move") {
       try {
@@ -1762,10 +1764,6 @@ wss.on("connection", async (ws, req) => {
 
     if (msg.type === "friend_accept") {
       try {
-        } catch (err) {
-          console.error("Unhandled websocket message error:", err);
-          send({ type: "error", message: "Server error" });
-        }
         const pairId = Number(msg.pairId);
         const otherUserId = Number(msg.userId);
         let pair = null;
