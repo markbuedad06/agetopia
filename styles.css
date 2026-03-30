@@ -907,8 +907,8 @@ body {
 /* Friends Chat */
 .friends-chat-toggle {
   position: fixed;
-  bottom: 110px;
-  right: 18px;
+  bottom: 24px;
+  right: 28px;
   padding: 0.65rem 0.9rem;
   border-radius: 12px;
   border: 1px solid #5e4c7e;
@@ -922,7 +922,7 @@ body {
 
 .friends-chat-panel {
   position: fixed;
-  bottom: 110px;
+  bottom: 88px;
   right: 16px;
   width: min(540px, 90vw);
   background: rgba(22, 16, 31, 0.98);
