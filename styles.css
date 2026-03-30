@@ -1361,35 +1361,62 @@ body {
   .friends-chat-panel {
     left: 8px;
     right: 8px;
-    width: auto;
-    bottom: 56px;
-    padding: 0.4rem;
+    width: min(420px, calc(100% - 16px));
+    bottom: 52px;
+    padding: 0.32rem;
     border-radius: 12px;
-    gap: 0.35rem;
+    gap: 0.3rem;
     max-height: 65vh;
     overflow: hidden;
+    font-size: 0.9rem;
   }
 
   .friends-chat-body {
     grid-template-columns: 1fr;
-    gap: 0.35rem;
-    min-height: 170px;
+    gap: 0.3rem;
+    min-height: 150px;
     overflow-y: auto;
     max-height: calc(65vh - 140px);
   }
 
   .friends-list {
-    max-height: 100px;
+    max-height: 95px;
   }
 
   .friends-messages {
-    max-height: 120px;
+    max-height: 110px;
   }
 
   .friends-chat-toggle {
     bottom: 28px;
     right: 12px;
     padding: 0.48rem 0.65rem;
+  }
+
+  .friends-chat-header {
+    font-size: 0.95rem;
+  }
+
+  .friends-chat-search input,
+  .friends-chat-search button {
+    padding: 0.36rem 0.45rem;
+    font-size: 0.9rem;
+  }
+
+  .friend-search-row,
+  .friend-row {
+    padding: 0.32rem 0.4rem;
+    font-size: 0.9rem;
+  }
+
+  .friends-conversation-header {
+    font-size: 0.92rem;
+  }
+
+  .friends-message-input input,
+  .friends-message-input button {
+    padding: 0.36rem 0.45rem;
+    font-size: 0.9rem;
   }
 
   .arrow-btn {
@@ -1500,11 +1527,13 @@ body {
 
   .friends-chat-panel {
     bottom: 44px;
-    padding: 0.3rem;
+    padding: 0.26rem;
     gap: 0.25rem;
     border-radius: 10px;
     max-height: 58vh;
     overflow: hidden;
+    max-width: 380px;
+    font-size: 0.85rem;
   }
 
   .friends-chat-body {
@@ -1515,17 +1544,39 @@ body {
   }
 
   .friends-list {
-    max-height: 70px;
+    max-height: 65px;
   }
 
   .friends-messages {
-    max-height: 85px;
+    max-height: 80px;
   }
 
   .friends-chat-toggle {
     bottom: 10px;
     right: 10px;
     padding: 0.38rem 0.5rem;
+  }
+
+  .friends-chat-header {
+    font-size: 0.9rem;
+  }
+
+  .friends-chat-search input,
+  .friends-chat-search button {
+    padding: 0.3rem 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .friend-search-row,
+  .friend-row {
+    padding: 0.28rem 0.35rem;
+    font-size: 0.86rem;
+  }
+
+  .friends-message-input input,
+  .friends-message-input button {
+    padding: 0.32rem 0.4rem;
+    font-size: 0.86rem;
   }
 
   .inventory-bar {
