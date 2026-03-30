@@ -20,7 +20,10 @@
       <div id="chatHistoryPanel" class="chat-history-panel" role="region" aria-label="World chat history">
         <div class="chat-history-header">
           <span>World Chat</span>
-          <span class="chat-history-window">Last 1 hr</span>
+          <div class="chat-history-actions">
+            <span class="chat-history-window">Last 1 hr</span>
+            <button id="chatHistoryToggle" type="button" class="chat-history-toggle" aria-expanded="true" aria-label="Toggle world chat panel">Close</button>
+          </div>
         </div>
         <div id="chatHistoryList" class="chat-history-list" role="log" aria-live="polite"></div>
       </div>

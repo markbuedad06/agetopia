@@ -28,6 +28,7 @@ const chatInput = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
 const chatHistoryPanel = document.getElementById("chatHistoryPanel");
 const chatHistoryList = document.getElementById("chatHistoryList");
+const chatHistoryToggle = document.getElementById("chatHistoryToggle");
 const friendsChatToggle = document.getElementById("friendsChatToggle");
 const friendsChatPanel = document.getElementById("friendsChatPanel");
 const friendsChatClose = document.getElementById("friendsChatClose");
@@ -838,6 +839,20 @@ function setupChatUI() {
       closeChat();
     }
   });
+
+  const updateChatHistoryToggle = () => {
+    if (!chatHistoryToggle || !chatHistoryPanel) return;
+    const collapsed = chatHistoryPanel.classList.contains("collapsed");
+    chatHistoryToggle.textContent = collapsed ? "Open" : "Close";
+    chatHistoryToggle.setAttribute("aria-expanded", String(!collapsed));
+  };
+
+  chatHistoryToggle?.addEventListener("click", () => {
+    chatHistoryPanel?.classList.toggle("collapsed");
+    updateChatHistoryToggle();
+  });
+
+  updateChatHistoryToggle();
 }
 
 function setupFriendsChatUI() {
