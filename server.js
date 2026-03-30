@@ -1317,6 +1317,12 @@ wss.on("connection", async (ws, req) => {
     ws,
   };
 
+  // Helper to send a message to this socket safely
+  const send = (payload) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify(payload));
+  };
+
   players.set(playerId, player);
   if (!worldPlayers.has(worldName)) worldPlayers.set(worldName, []);
   worldPlayers.get(worldName).push(playerId);
