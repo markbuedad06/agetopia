@@ -6,6 +6,7 @@
   --text: #f4f2f7;
   --accent: #6ee7b7;
   --accent-2: #fbbf24;
+  --hud-scale: clamp(0.7, 1vw + 0.6, 1);
 }
 
 * {
@@ -224,6 +225,8 @@ body {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(6px);
   pointer-events: auto;
+  transform: scale(var(--hud-scale));
+  transform-origin: top right;
 }
 
 .chat-toggle {
@@ -241,6 +244,8 @@ body {
   cursor: pointer;
   pointer-events: auto;
   z-index: 60;
+  transform: scale(var(--hud-scale));
+  transform-origin: top left;
 }
 
 .chat-bar {
@@ -256,6 +261,8 @@ body {
   padding: 0.35rem 0.45rem;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
   z-index: 30;
+  transform: scale(var(--hud-scale));
+  transform-origin: top left;
 }
 
 .chat-bar input {
@@ -294,6 +301,8 @@ body {
   gap: 0.35rem;
   overflow: hidden;
   pointer-events: auto;
+  transform: scale(var(--hud-scale));
+  transform-origin: top left;
 }
 
 .chat-history-header {
@@ -493,13 +502,15 @@ body {
   padding: 0.35rem 0.65rem;
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   pointer-events: none;
+  transform: scale(var(--hud-scale));
+  transform-origin: top right;
 }
 
 .world-owner-display {
   position: fixed;
   top: 16px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--hud-scale));
   font-size: 1.05rem;
   font-weight: 700;
   color: #a7f3d0;
@@ -512,6 +523,7 @@ body {
   border-radius: 12px;
   backdrop-filter: blur(6px);
   pointer-events: none;
+  transform-origin: center top;
 }
 
 .world-owner-display.hidden {
@@ -544,7 +556,7 @@ body {
   position: fixed;
   bottom: 10px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--hud-scale));
   width: 90vw;
   max-width: 400px;
   height: 70px;
@@ -557,6 +569,7 @@ body {
   padding: 6px 10px;
   z-index: 25;
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
+  transform-origin: center bottom;
 }
 
 .inventory-expand-btn {
@@ -924,6 +937,8 @@ body {
   cursor: pointer;
   z-index: 120;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
+  transform: scale(var(--hud-scale));
+  transform-origin: bottom right;
 }
 
 .friends-chat-panel {
@@ -940,6 +955,8 @@ body {
   display: grid;
   gap: 0.6rem;
   backdrop-filter: blur(6px);
+  transform: scale(var(--hud-scale));
+  transform-origin: bottom right;
 }
 
 .friends-chat-panel.hidden {
