@@ -1099,9 +1099,10 @@ function addFriendMessages(pairId, newMessages) {
   if (!friendsState.messages.has(pairId)) friendsState.messages.set(pairId, []);
   const arr = friendsState.messages.get(pairId);
   newMessages.forEach((msg) => {
-    arr.push(msg);
+    const createdAtMs = normalizeChatTimestamp(msg.createdAt || msg.createdAtMs || msg.created_at || Date.now());
+    arr.push({ ...msg, createdAtMs });
   });
-  arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  arr.sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
   if (friendsState.activePairId === pairId) {
     renderFriendMessages();
   }
