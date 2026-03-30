@@ -1101,9 +1101,15 @@ function addFriendMessages(pairId, newMessages) {
   if (!friendsState.messages.has(pairId)) friendsState.messages.set(pairId, []);
   const arr = friendsState.messages.get(pairId);
   newMessages.forEach((msg) => {
-    arr.push(msg);
+    const stamped = normalizeChatTimestamp(msg.createdAt || msg.createdAtMs || msg.created_at || msg.created_at_ms);
+    const normalized = { ...msg, createdAtMs: stamped };
+    arr.push(normalized);
   });
-  arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  arr.sort((a, b) => {
+    const aTs = typeof a.createdAtMs === "number" ? a.createdAtMs : normalizeChatTimestamp(a.createdAt || a.created_at);
+    const bTs = typeof b.createdAtMs === "number" ? b.createdAtMs : normalizeChatTimestamp(b.createdAt || b.created_at);
+    return aTs - bTs;
+  });
   if (friendsState.activePairId === pairId) {
     renderFriendMessages();
   }
