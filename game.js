@@ -1082,8 +1082,9 @@ function renderFriendMessages() {
     row.className = `friend-message-row ${String(m.senderId) === String(networkState.userId) ? "me" : ""}`;
     const meta = document.createElement("div");
     meta.className = "friend-message-meta";
-    const time = new Date(m.createdAt || Date.now());
-    meta.textContent = `${String(m.senderId) === String(networkState.userId) ? "You" : pair?.friendUsername || "Friend"} • ${time.toLocaleTimeString()}`;
+    const createdAtMs = normalizeChatTimestamp(m.createdAt || m.createdAtMs || m.created_at || Date.now());
+    const time = new Date(createdAtMs);
+    meta.textContent = `${String(m.senderId) === String(networkState.userId) ? "You" : pair?.friendUsername || "Friend"} • ${time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
     const body = document.createElement("div");
     body.textContent = m.message;
     row.appendChild(meta);
