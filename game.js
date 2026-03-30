@@ -26,6 +26,8 @@ const chatToggleBtn = document.getElementById("chatToggleBtn");
 const chatBar = document.getElementById("chatBar");
 const chatInput = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
+const chatHistoryPanel = document.getElementById("chatHistoryPanel");
+const chatHistoryList = document.getElementById("chatHistoryList");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const graphicsScaleEl = document.getElementById("graphicsScale");
 const toggleReachRingEl = document.getElementById("toggleReachRing");
@@ -136,6 +138,10 @@ const drops = new Map();
 const growingPlants = new Map(); // Track growing seeds: "x:y" -> { progress, totalTime }
 const lockedAreas = []; // Array of locked areas: { userId, centerX, centerY, radius }
 const chatBubbles = new Map(); // playerId -> { text, expiresAt, username }
+const chatHistory = [];
+const chatHistoryIds = new Set();
+const CHAT_HISTORY_WINDOW_MS = 60 * 60 * 1000;
+let chatPruneTimer = null;
 let nextDropId = 1;
 let selectedInventoryTile = null;
 
@@ -813,6 +819,95 @@ function setupChatUI() {
       closeChat();
     }
   });
+}
+
+function normalizeChatTimestamp(ts) {
+  if (!ts) return Date.now();
+  const stamped = ts.includes("T") ? ts : `${ts.replace(" ", "T")}Z`;
+  const parsed = Date.parse(stamped);
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+}
+
+function pruneChatHistory() {
+  const cutoff = Date.now() - CHAT_HISTORY_WINDOW_MS;
+  let removed = false;
+  for (let i = chatHistory.length - 1; i >= 0; i -= 1) {
+    const entry = chatHistory[i];
+    const createdAtMs = entry.createdAtMs ?? normalizeChatTimestamp(entry.createdAt);
+    entry.createdAtMs = createdAtMs;
+    if (createdAtMs < cutoff) {
+      if (entry.chatId) chatHistoryIds.delete(entry.chatId);
+      chatHistory.splice(i, 1);
+      removed = true;
+    }
+  }
+  return removed;
+}
+
+function renderChatHistory() {
+  if (!chatHistoryList) return;
+  pruneChatHistory();
+  chatHistoryList.innerHTML = "";
+
+  if (chatHistory.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "chat-history-empty";
+    empty.textContent = "No messages yet";
+    chatHistoryList.appendChild(empty);
+    return;
+  }
+
+  const recent = chatHistory.slice(-50);
+  recent.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "chat-history-row";
+
+    const user = document.createElement("span");
+    user.className = "chat-history-user";
+    user.textContent = `${entry.username || "Player"}:`;
+
+    const message = document.createElement("span");
+    message.className = "chat-history-message";
+    message.textContent = entry.text;
+
+    row.appendChild(user);
+    row.appendChild(message);
+    chatHistoryList.appendChild(row);
+  });
+
+  chatHistoryList.scrollTop = chatHistoryList.scrollHeight;
+}
+
+function addChatHistoryEntry(entry, { skipRender = false } = {}) {
+  const text = (entry.text || "").toString().trim();
+  if (!text) return;
+
+  const chatId = entry.chatId != null ? String(entry.chatId) : null;
+  if (chatId && chatHistoryIds.has(chatId)) return;
+
+  const createdAtMs = entry.createdAtMs || normalizeChatTimestamp(entry.createdAt);
+  chatHistory.push({
+    chatId,
+    username: (entry.username || "Player").toString(),
+    text,
+    createdAt: entry.createdAt || new Date(createdAtMs).toISOString(),
+    createdAtMs,
+  });
+  if (chatId) chatHistoryIds.add(chatId);
+
+  const pruned = pruneChatHistory();
+  if (!skipRender || pruned) {
+    renderChatHistory();
+  }
+}
+
+function bootChatHistoryPruner() {
+  if (chatPruneTimer) return;
+  chatPruneTimer = window.setInterval(() => {
+    if (pruneChatHistory()) {
+      renderChatHistory();
+    }
+  }, 30000);
 }
 
 function unlockGameplay() {
@@ -2040,6 +2135,20 @@ function connectSocket(token) {
         growingPlants.clear();
         loadGrowingPlants();
       }
+
+      chatHistory.length = 0;
+      chatHistoryIds.clear();
+      if (Array.isArray(msg.chats)) {
+        msg.chats.forEach((chat) => {
+          addChatHistoryEntry({
+            chatId: chat.chatId ?? chat.id,
+            username: chat.username || "Player",
+            text: chat.text || chat.message,
+            createdAt: chat.createdAt,
+          }, { skipRender: true });
+        });
+      }
+      renderChatHistory();
       return;
     }
 
@@ -2215,6 +2324,12 @@ function connectSocket(token) {
       if (text && targetId) {
         addChatBubble(targetId, text);
       }
+      addChatHistoryEntry({
+        chatId: msg.chatId,
+        username: msg.username || "Player",
+        text,
+        createdAt: msg.createdAt,
+      });
       return;
     }
 
@@ -2358,6 +2473,8 @@ async function setupAuthPanel() {
   loadSettings();
   setupMenuInteractions();
   setupChatUI();
+  renderChatHistory();
+  bootChatHistoryPruner();
   loadInventoryState();
 
   if (!ONLINE_MODE) {

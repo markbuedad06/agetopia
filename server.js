@@ -67,6 +67,7 @@ let lockedAreasDB;
 let worldOwnersDB;
 let worldsDB;
 let dropsDB;
+let chatsDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 const worldDropsLoaded = new Set(); // track which worlds have drops loaded from DB
@@ -260,6 +261,17 @@ async function ensureSchema() {
     floatTime FLOAT NOT NULL,
     updatedAt DATETIME NOT NULL,
     INDEX drop_world_idx (worldName)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    worldName VARCHAR(64) NOT NULL,
+    userId VARCHAR(191) NOT NULL,
+    username VARCHAR(191) NOT NULL,
+    message TEXT NOT NULL,
+    createdAt DATETIME NOT NULL,
+    INDEX chat_world_idx (worldName),
+    INDEX chat_created_idx (createdAt)
   )`);
 }
 
@@ -561,6 +573,33 @@ function makeDropsRepo() {
   };
 }
 
+function makeChatsRepo() {
+  return {
+    findRecent: async (worldName, windowMinutes = 60) => {
+      if (!worldName) return [];
+      const minutes = Math.max(1, Number(windowMinutes) || 60);
+      const cutoff = formatDateForMySQL(new Date(Date.now() - minutes * 60 * 1000));
+      const [rows] = await pool.query(
+        "SELECT id AS chatId, worldName, userId, username, message, createdAt FROM chat_messages WHERE worldName = ? AND createdAt >= ? ORDER BY createdAt ASC",
+        [worldName, cutoff]
+      );
+      return rows;
+    },
+    insert: async (doc) => {
+      const createdAt = doc.createdAt || formatDateForMySQL();
+      const [result] = await pool.query(
+        "INSERT INTO chat_messages (worldName, userId, username, message, createdAt) VALUES (?, ?, ?, ?, ?)",
+        [doc.worldName, String(doc.userId || ""), doc.username || "", doc.message || "", createdAt]
+      );
+      return { chatId: result.insertId, createdAt };
+    },
+    cleanup: async () => {
+      const cutoff = formatDateForMySQL(new Date(Date.now() - 60 * 60 * 1000));
+      await pool.query("DELETE FROM chat_messages WHERE createdAt < ?", [cutoff]);
+    },
+  };
+}
+
 async function initStores() {
   pool = buildPoolFromUrl();
   await ensureSchema();
@@ -573,6 +612,8 @@ async function initStores() {
   worldOwnersDB = makeWorldOwnersRepo();
   worldsDB = makeWorldsRepo();
   dropsDB = makeDropsRepo();
+  chatsDB = makeChatsRepo();
+  await chatsDB.cleanup();
   
   // Run migration to convert inventory from ID-based to name-based
   await migrateInventoryToNames();
@@ -1320,6 +1361,16 @@ wss.on("connection", async (ws, req) => {
     console.log(`[${worldName}] World owner info for init:`, { ownerId: worldOwnerId, ownerUsername: ownerUsername, currentPlayerId: player.id });
   }
 
+  await chatsDB.cleanup();
+  const chatRows = await chatsDB.findRecent(worldName, 60);
+  const chatHistory = chatRows.map((chat) => ({
+    chatId: chat.chatId ?? chat.id,
+    userId: chat.userId,
+    username: chat.username,
+    text: chat.message,
+    createdAt: chat.createdAt,
+  }));
+
   ws.send(JSON.stringify({
     type: "init",
     id: player.id,
@@ -1332,7 +1383,8 @@ wss.on("connection", async (ws, req) => {
     world: Array.from(world),
     inventory: userInventory,
     plants: plantsList,
-    drops: Array.from(getWorldDrops(worldName).values())
+    drops: Array.from(getWorldDrops(worldName).values()),
+    chats: chatHistory,
   }));
 
   broadcast({
@@ -1463,12 +1515,22 @@ wss.on("connection", async (ws, req) => {
         const text = String(msg.text || "").trim().slice(0, 100);
         if (!text) return;
 
+        const { chatId, createdAt } = await chatsDB.insert({
+          worldName,
+          userId: player.userId,
+          username: player.username,
+          message: text,
+        });
+        await chatsDB.cleanup();
+
         const payload = {
           type: "chat",
+          chatId,
           id: player.id,
           userId: player.userId,
           username: player.username,
           text,
+          createdAt,
         };
 
         broadcast(payload, null, worldName);
@@ -1735,6 +1797,10 @@ async function start() {
     await clearAllGameData();
   }
   
+  setInterval(() => {
+    chatsDB.cleanup().catch((err) => console.error("Chat cleanup failed:", err));
+  }, 5 * 60 * 1000);
+
   server.listen(PORT, () => {
     console.log(`Agetopia server running at http://localhost:${PORT}`);
   });
