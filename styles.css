@@ -907,8 +907,8 @@ body {
 /* Friends Chat */
 .friends-chat-toggle {
   position: fixed;
-  bottom: 90px;
-  right: 16px;
+  bottom: 110px;
+  right: 18px;
   padding: 0.65rem 0.9rem;
   border-radius: 12px;
   border: 1px solid #5e4c7e;
@@ -916,7 +916,7 @@ body {
   color: var(--text);
   font-weight: 700;
   cursor: pointer;
-  z-index: 45;
+  z-index: 120;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
 }
 
