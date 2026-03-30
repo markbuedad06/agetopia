@@ -1357,28 +1357,30 @@ body {
     left: 8px;
     right: 8px;
     width: auto;
-    bottom: 80px;
-    padding: 0.5rem;
+    bottom: 56px;
+    padding: 0.4rem;
     border-radius: 12px;
+    gap: 0.35rem;
   }
 
   .friends-chat-body {
     grid-template-columns: 1fr;
-    gap: 0.45rem;
+    gap: 0.35rem;
+    min-height: 180px;
   }
 
   .friends-list {
-    max-height: 160px;
+    max-height: 120px;
   }
 
   .friends-messages {
-    max-height: 180px;
+    max-height: 140px;
   }
 
   .friends-chat-toggle {
-    bottom: 40px;
+    bottom: 28px;
     right: 12px;
-    padding: 0.55rem 0.8rem;
+    padding: 0.48rem 0.65rem;
   }
 
   .arrow-btn {
