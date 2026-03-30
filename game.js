@@ -342,7 +342,8 @@ let digitComboExpiresAt = 0;
 let chatRecentlyClosed = false;
 
 function isChatFocused() {
-  return document.activeElement === chatInput;
+  const active = document.activeElement;
+  return active === chatInput || active === friendsMessageInput || active === friendSearchInput;
 }
 
 function getChatDurationMs(text) {
@@ -875,6 +876,7 @@ function setupFriendsChatUI() {
   friendsMessageInput?.addEventListener("keydown", (e) => {
     if (e.code === "Enter") {
       e.preventDefault();
+      e.stopPropagation();
       friendsMessageSend?.click();
     }
   });
@@ -1099,10 +1101,9 @@ function addFriendMessages(pairId, newMessages) {
   if (!friendsState.messages.has(pairId)) friendsState.messages.set(pairId, []);
   const arr = friendsState.messages.get(pairId);
   newMessages.forEach((msg) => {
-    const createdAtMs = normalizeChatTimestamp(msg.createdAt || msg.createdAtMs || msg.created_at || Date.now());
-    arr.push({ ...msg, createdAtMs });
+    arr.push(msg);
   });
-  arr.sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+  arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   if (friendsState.activePairId === pairId) {
     renderFriendMessages();
   }
