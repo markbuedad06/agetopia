@@ -1479,7 +1479,7 @@ body {
   }
 }
 
-@media (max-width: 600px) and (max-height: 360px) {
+@media (max-width: 800px) and (max-height: 400px) {
   .chat-history-panel {
     top: 44px;
     left: 6px;
