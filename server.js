@@ -1559,12 +1559,13 @@ wss.on("connection", async (ws, req) => {
   }, player.id, worldName);
 
   ws.on("message", async (raw) => {
-    let msg;
     try {
-      msg = JSON.parse(raw.toString());
-    } catch {
-      return;
-    }
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
 
     if (msg.type === "player_move") {
       try {
@@ -2102,6 +2103,9 @@ wss.on("connection", async (ws, req) => {
       dropsMap.delete(dropId);
       await dropsDB.remove({ id: dropId });
       broadcast({ type: "drop_collect", id: dropId }, null, worldName);
+    } catch (err) {
+      console.error("Unhandled websocket message error:", err);
+      send({ type: "error", message: "Server error" });
     }
   });
 
