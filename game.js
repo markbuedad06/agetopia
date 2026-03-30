@@ -681,7 +681,7 @@ function setupMenuInteractions() {
     if (!(target instanceof Element)) return;
     const clickedMenu = menuModal?.contains(target) || menuBtn?.contains(target);
     const clickedSettings = settingsModal?.contains(target);
-    const clickedInventory = inventoryModal?.contains(target) || inventoryBtn?.contains(target);
+    const clickedInventory = inventoryModal?.contains(target) || inventoryExpandBtn?.contains(target);
     if (!clickedMenu && !clickedSettings && !clickedInventory) {
       hideMenuLayers();
     }
