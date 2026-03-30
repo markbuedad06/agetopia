@@ -913,7 +913,7 @@ body {
 /* Friends Chat */
 .friends-chat-toggle {
   position: fixed;
-  bottom: 110px;
+  bottom: 60px;
   right: 18px;
   padding: 0.65rem 0.9rem;
   border-radius: 12px;
