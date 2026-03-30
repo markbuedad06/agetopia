@@ -10,472 +10,417 @@ const { WebSocketServer, WebSocket } = require("ws");
 const PORT = Number(process.env.PORT || 3002);
 
 // Build MYSQL_URL from Railway env vars (if available) or use MYSQL_URL directly
-let MYSQL_URL = process.env.MYSQL_URL;
-if (!MYSQL_URL && process.env.MYSQLHOST) {
-  const user = process.env.MYSQLUSER || "root";
-  const pass = process.env.MYSQLPASSWORD || "";
-  const host = process.env.MYSQLHOST;
-  const port = process.env.MYSQLPORT || 3306;
-  const db = process.env.MYSQLDATABASE || "agetopia";
-  MYSQL_URL = `mysql://${user}:${pass}@${host}:${port}/${db}`;
-  console.log("Using Railway MySQL env vars for connection");
-} else if (!MYSQL_URL) {
-  MYSQL_URL = "mysql://root:password@localhost:3306/agetopia";
-}
-
-const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret-in-production";
-const TILE = 32;
-const WORLD_WIDTH = 240;
-const WORLD_HEIGHT = 90;
-const INVENTORY_STACK_LIMIT = 99;
-const MAX_HEALTH = 100;
-const PUNCH_DAMAGE = 20;
-const PUNCH_RANGE = TILE * 2.25;
-const PUNCH_COOLDOWN_MS = 320;
-const KNOCKBACK_PUSH = 420;
-const KNOCKBACK_LIFT = -260;
-const LOCK_RADIUS = 10; // Tiles around a land_lock that are protected
-const LAND_LOCK_TILE = 15;
-const LAVA_TILE = 16;
-const LAVA_DAMAGE = 15;
-const LAVA_COOLDOWN_MS = 900;
-const LAVA_KNOCKBACK = 420;
-
-const app = express();
-const server = http.createServer(app);
-
-app.use(express.json());
-
-// Enable CORS
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-let pool;
-let usersDB;
-let worldDB;
-let profilesDB;
-let growingPlantsDB;
-let inventoriesDB;
-let lockedAreasDB;
-let worldOwnersDB;
-let worldsDB;
-let dropsDB;
-let chatsDB;
-let friendsDB;
-let friendMessagesDB;
-const worldCache = new Map();
-const worldDrops = new Map(); // worldName -> Map(dropId, drop)
-const worldDropsLoaded = new Set(); // track which worlds have drops loaded from DB
-const lockedAreasCache = new Map(); // worldName -> Array of locked areas
-const worldOwnersCache = new Map(); // worldName -> userId of owner
-
-const INVENTORY_KEYS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
-
-// Item ID to name mapping
-const ITEM_ID_TO_NAME = {
-  1: "Grass Block",
-  2: "Dirt Block",
-  3: "Stone Block",
-  4: "Wood Block",
-  5: "Cloud Block",
-  6: "123 Block",
-  8: "Gem",
-  15: "Land Lock",
-  16: "Lava",
-  17: "Lava Seed",
-  9: "Grass Seed",
-  10: "Dirt Seed",
-  11: "Stone Seed",
-  12: "Wood Seed",
-  13: "Cloud Seed",
-  14: "Glow Seed",
-};
-
-// Reverse mapping
-const ITEM_NAME_TO_ID = {};
-for (const [id, name] of Object.entries(ITEM_ID_TO_NAME)) {
-  ITEM_NAME_TO_ID[name] = Number(id);
-}
-
-function defaultInventory() {
-  const inv = {};
-  Object.values(ITEM_ID_TO_NAME).forEach((name) => { inv[name] = 0; });
-  // FORCE ensure land_lock is always at least 1
-  inv["Land Lock"] = 1;
-  return inv;
-}
-
-function sanitizeInventory(input) {
-  const inv = defaultInventory();
-  if (!input || typeof input !== "object") return inv;
-  
-  // Handle both ID-based (legacy) and name-based inventory
-  for (const [key, val] of Object.entries(input)) {
-    const itemName = isNaN(key) ? key : ITEM_ID_TO_NAME[Number(key)];
-    if (itemName && Object.prototype.hasOwnProperty.call(inv, itemName)) {
-      const num = Number(val);
-      if (Number.isFinite(num) && num >= 0) {
-        inv[itemName] = Math.min(INVENTORY_STACK_LIMIT, Math.floor(num));
-      }
-    }
-  }
-  
-  // FORCE ensure land_lock is always at least 1
-  inv["Land Lock"] = Math.max(1, inv["Land Lock"] || 0);
-  return inv;
-}
-
-function blockKey(worldName, x, y) {
-  return `${worldName}:${x}:${y}`;
-}
-
-function plantKey(worldName, x, y) {
-  return `${worldName}:plant:${x}:${y}`;
-}
-
-function profileKey(userId, worldName) {
-  return `${userId}:${worldName}`;
-}
-
-function inventoryKey(userId) {
-  return `${userId}:inventory`;
-}
-
-function getWorldDrops(worldName) {
-  if (!worldDrops.has(worldName)) {
-    worldDrops.set(worldName, new Map());
-  }
-  return worldDrops.get(worldName);
-}
-
-async function ensureDropsLoaded(worldName) {
-  if (worldDropsLoaded.has(worldName)) return;
-  const rows = await dropsDB.find({ worldName });
-  const dropsMap = getWorldDrops(worldName);
-  for (const row of rows) {
-    dropsMap.set(String(row.id), {
-      id: String(row.id),
-      tile: Number(row.tile),
-      x: Number(row.x),
-      y: Number(row.y),
-      vx: Number(row.vx) || 0,
-      vy: Number(row.vy) || 0,
-      floatY: Number(row.floatY) || 0,
-      floatTime: Number(row.floatTime) || 0,
-    });
-  }
-  worldDropsLoaded.add(worldName);
-}
-
-async function ensureSchema() {
-  await pool.query(`CREATE TABLE IF NOT EXISTS users (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(191) NOT NULL UNIQUE,
-    passwordHash VARCHAR(255) NOT NULL,
-    createdAt DATETIME NOT NULL
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS world_blocks (
-    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
-    worldName VARCHAR(64) NOT NULL,
-    x INT NOT NULL,
-    y INT NOT NULL,
-    tile INT NOT NULL,
-    updatedAt DATETIME NOT NULL,
-    INDEX world_idx (worldName)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS profiles (
-    profileId VARCHAR(191) PRIMARY KEY,
-    userId INT NOT NULL,
-    worldName VARCHAR(64) NOT NULL,
-    spawnX INT NULL,
-    spawnY INT NULL
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS growing_plants (
-    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
-    worldName VARCHAR(64) NOT NULL,
-    x INT NOT NULL,
-    y INT NOT NULL,
-    sourceBlock INT NOT NULL,
-    dropCount INT NOT NULL,
-    totalTime INT NOT NULL,
-    plantedAt BIGINT NOT NULL,
-    fullGrown BOOLEAN NOT NULL DEFAULT FALSE,
-    createdAt DATETIME NOT NULL,
-    INDEX gp_world_idx (worldName)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS inventories (
-    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
-    userId INT NOT NULL,
-    inventory JSON NOT NULL,
-    updatedAt DATETIME NOT NULL,
-    UNIQUE INDEX inv_user_idx (userId)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS locked_areas (
-    ` + "`key`" + ` VARCHAR(191) PRIMARY KEY,
-    worldName VARCHAR(64) NOT NULL,
-    userId VARCHAR(191) NOT NULL,
-    centerX INT NOT NULL,
-    centerY INT NOT NULL,
-    radius INT NOT NULL DEFAULT 10,
-    createdAt DATETIME NOT NULL,
-    INDEX lock_world_idx (worldName),
-    INDEX lock_user_idx (userId)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS world_owners (
-    worldName VARCHAR(64) PRIMARY KEY,
-    userId VARCHAR(191) NOT NULL,
-    createdAt DATETIME NOT NULL,
-    UNIQUE INDEX owner_user_idx (userId, worldName)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS worlds (
-    worldName VARCHAR(64) PRIMARY KEY,
-    userId VARCHAR(191) NOT NULL,
-    doorX INT DEFAULT 120,
-    doorY INT DEFAULT 45,
-    createdAt DATETIME NOT NULL,
-    updatedAt DATETIME NOT NULL,
-    INDEX world_user_idx (userId)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS world_drops (
-    id VARCHAR(191) PRIMARY KEY,
-    worldName VARCHAR(64) NOT NULL,
-    tile INT NOT NULL,
-    x FLOAT NOT NULL,
-    y FLOAT NOT NULL,
-    vx FLOAT NOT NULL,
-    vy FLOAT NOT NULL,
-    floatY FLOAT NOT NULL,
-    floatTime FLOAT NOT NULL,
-    updatedAt DATETIME NOT NULL,
-    INDEX drop_world_idx (worldName)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS friend_pairs (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    userLow INT NOT NULL,
-    userHigh INT NOT NULL,
-    status ENUM('pending','accepted') NOT NULL DEFAULT 'pending',
-    requestedBy INT NOT NULL,
-    createdAt DATETIME NOT NULL,
-    updatedAt DATETIME NOT NULL,
-    UNIQUE KEY pair_unique (userLow, userHigh),
-    INDEX friend_status_idx (status),
-    INDEX friend_user_low_idx (userLow),
-    INDEX friend_user_high_idx (userHigh)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS friend_messages (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    pairId INT NOT NULL,
-    senderId INT NOT NULL,
-    recipientId INT NOT NULL,
-    message TEXT NOT NULL,
-    createdAt DATETIME NOT NULL,
-    INDEX fm_pair_idx (pairId),
-    INDEX fm_created_idx (createdAt)
-  )`);
-
-  await pool.query(`CREATE TABLE IF NOT EXISTS chat_messages (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    worldName VARCHAR(64) NOT NULL,
-    userId VARCHAR(191) NOT NULL,
-    username VARCHAR(191) NOT NULL,
-    message TEXT NOT NULL,
-    createdAt DATETIME NOT NULL,
-    INDEX chat_world_idx (worldName),
-    INDEX chat_created_idx (createdAt)
-  )`);
-}
-
-function formatDateForMySQL(date = new Date()) {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const hours = String(date.getUTCHours()).padStart(2, "0");
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
-
-function buildPoolFromUrl() {
-  const url = new URL(MYSQL_URL);
-  const sslParam = url.searchParams.get("ssl");
-  let ssl;
-  if (sslParam === "false") {
-    ssl = undefined;
-  } else if (sslParam && sslParam !== "true") {
+  ws.on("message", async (raw) => {
+    let msg;
     try {
-      ssl = JSON.parse(sslParam);
+      msg = JSON.parse(raw.toString());
     } catch {
-      ssl = { rejectUnauthorized: false };
+      return;
     }
-  } else {
-    // Default: enable SSL but tolerate self-signed (Railway proxies)
-    ssl = { rejectUnauthorized: false };
-  }
 
-  return mysql.createPool({
-    host: url.hostname,
-    port: Number(url.port || 3306),
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    database: url.pathname.replace(/^\//, ""),
-    ssl,
-    waitForConnections: true,
-    connectionLimit: 10,
+    try {
+      if (msg.type === "player_move") {
+        if (typeof msg.x !== "number" || typeof msg.y !== "number") return;
+        player.x = msg.x;
+        player.y = msg.y;
+        player.facing = msg.facing === -1 ? -1 : 1;
+        // Do not change spawn position; players always spawn at door
+        await profilesDB.update(
+          { profileId },
+          { profileId, userId: player.userId, worldName },
+          { upsert: true }
+        );
+        broadcast({
+          type: "player_move",
+          id: player.id,
+          userId: player.userId,
+          username: player.username,
+          x: player.x,
+          y: player.y,
+          facing: player.facing,
+          health: player.health,
+        }, player.id, worldName);
+
+        await handleLavaContact(player);
+        return;
+      }
+
+      if (msg.type === "inventory_update") {
+        const inv = sanitizeInventory(msg.inventory);
+        await inventoriesDB.update(
+          { key: inventoryKey(player.userId) },
+          { key: inventoryKey(player.userId), userId: player.userId, inventory: inv, updatedAt: formatDateForMySQL() },
+          { upsert: true }
+        );
+        return;
+      }
+
+      if (msg.type === "punch_player") {
+        const targetId = String(msg.targetId || "");
+        const target = players.get(targetId);
+        if (!target || target.id === player.id || target.worldName !== worldName) return;
+
+        const now = Date.now();
+        if (now - player.lastPunchAt < PUNCH_COOLDOWN_MS) return;
+        if (distance(player, target) > PUNCH_RANGE) return;
+
+        player.lastPunchAt = now;
+        target.health = Math.max(0, target.health - PUNCH_DAMAGE);
+
+        broadcast({
+          type: "health_update",
+          id: target.id,
+          health: target.health,
+          maxHealth: target.maxHealth,
+        }, null, worldName);
+
+        broadcast({
+          type: "knockback",
+          id: player.id,
+          targetId: target.id,
+          vx: KNOCKBACK_PUSH * (player.facing || 1),
+          vy: KNOCKBACK_LIFT,
+          dx: 18 * (player.facing || 1),
+          dy: -12,
+        }, null, worldName);
+
+        broadcast({
+          type: "player_move",
+          id: target.id,
+          userId: target.userId,
+          username: target.username,
+          x: target.x,
+          y: target.y,
+          facing: target.facing,
+          health: target.health,
+        }, null, worldName);
+
+        if (target.health <= 0) {
+          await respawnPlayer(target);
+        }
+        return;
+      }
+
+      if (msg.type === "chat") {
+        const text = String(msg.text || "").trim().slice(0, 100);
+        if (!text) return;
+
+        const createdAt = formatDateForMySQL();
+        const chatDoc = {
+          worldName,
+          userId: player.userId,
+          username: player.username,
+          message: text,
+          createdAt,
+        };
+        const { chatId } = await chatsDB.insert(chatDoc);
+        const payload = {
+          type: "chat",
+          chatId,
+          worldName,
+          userId: player.userId,
+          username: player.username,
+          text,
+          createdAt,
+        };
+
+        broadcast(payload, null, worldName);
+        return;
+      }
+
+      if (msg.type === "friend_search") {
+        const q = String(msg.query || "").trim();
+        if (!q) return;
+        const like = `%${q}%`;
+        const [rows] = await pool.query(
+          "SELECT id, username FROM users WHERE username LIKE ? AND id <> ? LIMIT 10",
+          [like, player.userId]
+        );
+        send({ type: "friend_search_results", results: rows.map(r => ({ id: r.id, username: r.username })) });
+        return;
+      }
+
+      if (msg.type === "friend_request") {
+        const targetId = Number(msg.userId);
+        if (!Number.isFinite(targetId) || targetId <= 0) return;
+        if (String(targetId) === String(player.userId)) return;
+
+        const targetUser = await usersDB.findOne({ id: targetId });
+        if (!targetUser) {
+          send({ type: "error", message: "Player not found" });
+          return;
+        }
+
+        const pair = await friendsDB.upsertPending(player.userId, targetId, player.userId);
+        const friendPayload = {
+          pairId: pair?.id,
+          friendUserId: targetId,
+          friendUsername: targetUser.username,
+          status: pair?.status || "pending",
+          requestedBy: pair?.requestedBy || player.userId,
+          createdAt: pair?.createdAt,
+          updatedAt: pair?.updatedAt,
+        };
+        send({ type: "friend_pair_update", pair: friendPayload });
+
+        // Notify target user
+        sendToUser(targetId, {
+          type: "friend_pair_update",
+          pair: {
+            pairId: pair?.id,
+            friendUserId: player.userId,
+            friendUsername: player.username,
+            status: pair?.status || "pending",
+            requestedBy: pair?.requestedBy || player.userId,
+            createdAt: pair?.createdAt,
+            updatedAt: pair?.updatedAt,
+          },
+        });
+        return;
+      }
+
+      if (msg.type === "friend_accept") {
+        const pairId = Number(msg.pairId);
+        const otherUserId = Number(msg.userId);
+        let pair = null;
+        if (Number.isFinite(pairId) && pairId > 0) {
+          const [rows] = await pool.query("SELECT * FROM friend_pairs WHERE id = ? LIMIT 1", [pairId]);
+          pair = rows[0] || null;
+        } else if (Number.isFinite(otherUserId) && otherUserId > 0) {
+          pair = await friendsDB.findPair(player.userId, otherUserId);
+        }
+        if (!pair || pair.status !== "pending") {
+          send({ type: "error", message: "Friend link not found" });
+          return;
+        }
+        const isMember = String(pair.userLow) === String(player.userId) || String(pair.userHigh) === String(player.userId);
+        if (!isMember) return;
+
+        // Accept and notify both sides
+        await friendsDB.accept(pair.userLow, pair.userHigh);
+        const payloadSelf = {
+          pairId: pair.id,
+          friendUserId: String(pair.userLow) === String(player.userId) ? pair.userHigh : pair.userLow,
+          friendUsername: String(pair.userLow) === String(player.userId) ? pair.userHighName : pair.userLowName,
+          status: "accepted",
+          requestedBy: pair.requestedBy,
+          createdAt: pair.createdAt,
+          updatedAt: formatDateForMySQL(),
+        };
+        const payloadOther = {
+          ...payloadSelf,
+          friendUserId: player.userId,
+          friendUsername: player.username,
+        };
+        send({ type: "friend_pair_update", pair: payloadSelf });
+        sendToUser(payloadSelf.friendUserId, { type: "friend_pair_update", pair: payloadOther });
+        return;
+      }
+
+      if (msg.type === "friend_history") {
+        const pairId = Number(msg.pairId);
+        if (!Number.isFinite(pairId)) return;
+        const [rows] = await pool.query("SELECT userLow, userHigh, status FROM friend_pairs WHERE id=? LIMIT 1", [pairId]);
+        const pair = rows[0];
+        if (!pair) return;
+        const isMember = String(pair.userLow) === String(player.userId) || String(pair.userHigh) === String(player.userId);
+        if (!isMember || pair.status !== "accepted") return;
+        const messages = await friendMessagesDB.findRecentByPairs([pairId], 1440);
+        send({ type: "friend_history", pairId, messages });
+        return;
+      }
+
+      if (msg.type === "friend_chat_send") {
+        const pairId = Number(msg.pairId);
+        const text = String(msg.text || "").trim().slice(0, 200);
+        if (!Number.isFinite(pairId) || !text) return;
+        const [rows] = await pool.query("SELECT * FROM friend_pairs WHERE id=? LIMIT 1", [pairId]);
+        const pair = rows[0];
+        if (!pair || pair.status !== "accepted") return;
+        const isMember = String(pair.userLow) === String(player.userId) || String(pair.userHigh) === String(player.userId);
+        if (!isMember) return;
+        const friendId = String(pair.userLow) === String(player.userId) ? pair.userHigh : pair.userLow;
+        const { id: messageId, createdAt } = await friendMessagesDB.insert({
+          pairId,
+          senderId: player.userId,
+          recipientId: friendId,
+          message: text,
+        });
+        await friendMessagesDB.cleanup();
+        const payload = {
+          type: "friend_message",
+          pairId,
+          message: {
+            id: messageId,
+            pairId,
+            senderId: player.userId,
+            recipientId: friendId,
+            message: text,
+            createdAt,
+          },
+        };
+        send(payload);
+        sendToUser(friendId, payload);
+        return;
+      }
+
+      if (msg.type === "block_update") {
+        const x = Number(msg.x);
+        const y = Number(msg.y);
+        const tile = Number(msg.tile);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(tile)) return;
+        if (!inBounds(x, y)) return;
+        
+        const doorX = Math.floor(WORLD_WIDTH / 2);
+        const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
+        const isDoorTile = (x === doorX && y === doorBaseY);
+        if (isDoorTile) return;  // Prevent breaking/placing on door
+        
+        if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE && tile !== LAVA_TILE)) return;  // Allow tiles 0-6, land_lock(15), lava(16)
+
+        // Check world ownership - owner can build anywhere, non-owners can't build in owned worlds
+        const worldOwner = await getWorldOwner(worldName);
+        const worldOwnerId = worldOwner ? String(worldOwner) : null;
+        const playerOwnerId = String(player.userId);
+        const isOwner = worldOwnerId && worldOwnerId === playerOwnerId;
+        
+        if (worldOwnerId && !isOwner) {
+          // World is owned by another player - reject
+          send({ type: "error", message: "This world is owned by another player" });
+          return;
+        }
+
+        // If world has no owner yet and trying to place land_lock, that's allowed (will claim it)
+        // If world has owner and player is owner, they can place anywhere (skip lock check)
+        if (!isOwner && worldOwnerId !== null) {
+          // This shouldn't happen since we already rejected non-owners above
+          send({ type: "error", message: "Cannot build in this world" });
+          return;
+        }
+
+        // For the actual placement, owner doesn't need lock checks
+        // Only check locks if no owner yet (shouldn't reach here due to earlier check)
+        const world = getOrCreateWorldArray(worldName);
+        const oldTile = world[indexOf(x, y)];
+        
+        // Handle land_lock placement/removal
+        if (tile === LAND_LOCK_TILE && oldTile !== LAND_LOCK_TILE) {
+          // Placing land_lock - claim the world if not already owned
+          const claimed = await setWorldOwner(worldName, player.userId);
+          if (!claimed && worldOwnerId && worldOwnerId !== playerOwnerId) {
+            send({ type: "error", message: "This world has already been claimed" });
+            return;
+          }
+          // Create a lock around this land_lock
+          await createLock(worldName, x, y, player.userId);
+
+          // Invalidate cached locks
+          lockedAreasCache.delete(worldName);
+          
+          // Notify everyone the world has been claimed
+          broadcast({ type: "world_owner_set", worldName, userId: player.userId, username: player.username });
+          worldOwnersCache.set(worldName, String(player.userId));
+        } else if (oldTile === LAND_LOCK_TILE && tile !== LAND_LOCK_TILE) {
+          // Removing land_lock - only owner can remove
+          if (!isOwner) {
+            send({ type: "error", message: "Only the owner can remove the land lock" });
+            return;
+          }
+          await removeLock(worldName, x, y);
+          lockedAreasCache.delete(worldName);
+        }
+
+        // Apply the tile change
+        world[indexOf(x, y)] = tile;
+        await worldDB.update({ key: blockKey(worldName, x, y) }, { key: blockKey(worldName, x, y), worldName, x, y, tile, updatedAt: formatDateForMySQL() });
+
+        broadcast({
+          type: "block_update",
+          x,
+          y,
+          tile,
+          owner: isOwner ? { userId: player.userId, username: player.username } : null,
+        }, null, worldName);
+        return;
+      }
+
+      if (msg.type === "get_growing_plants") {
+        const growingPlants = await growingPlantsDB.find({ worldName });
+        const plantsList = growingPlants.map(p => ({
+          x: p.x,
+          y: p.y,
+          sourceBlock: p.sourceBlock,
+          dropCount: p.dropCount,
+          totalTime: p.totalTime,
+          plantedAt: p.plantedAt,
+          fullGrown: p.fullGrown
+        }));
+
+        ws.send(JSON.stringify({
+          type: "growing_plants",
+          plants: plantsList
+        }));
+        return;
+      }
+
+      if (msg.type === "get_locked_areas") {
+        const locks = await lockedAreasDB.find({ worldName });
+        const locksList = locks.map(lock => ({
+          userId: lock.userId,
+          centerX: lock.centerX,
+          centerY: lock.centerY,
+          radius: lock.radius
+        }));
+
+        ws.send(JSON.stringify({
+          type: "locked_areas",
+          locks: locksList
+        }));
+        return;
+      }
+
+      if (msg.type === "get_drops") {
+        await ensureDropsLoaded(worldName);
+        const dropsArr = Array.from(getWorldDrops(worldName).values());
+        ws.send(JSON.stringify({ type: "drops", drops: dropsArr }));
+        return;
+      }
+
+      if (msg.type === "drop_spawn") {
+        await ensureDropsLoaded(worldName);
+        const { id, tile, x, y, vx, vy, floatY, floatTime } = msg;
+        const dropId = String(id || randomUUID());
+        const drop = {
+          id: dropId,
+          tile: Number(tile),
+          x: Number(x),
+          y: Number(y),
+          vx: Number(vx) || 0,
+          vy: Number(vy) || 0,
+          floatY: Number(floatY) || Number(y) || 0,
+          floatTime: Number(floatTime) || 0,
+        };
+        const dropsMap = getWorldDrops(worldName);
+        dropsMap.set(dropId, drop);
+        await dropsDB.update({ id: dropId }, { id: dropId, worldName, ...drop, updatedAt: formatDateForMySQL() }, { upsert: true });
+        broadcast({ type: "drop_spawn", drop }, null, worldName);
+        return;
+      }
+
+      if (msg.type === "drop_collect") {
+        await ensureDropsLoaded(worldName);
+        const dropId = String(msg.id || "");
+        const dropsMap = getWorldDrops(worldName);
+        dropsMap.delete(dropId);
+        await dropsDB.remove({ id: dropId });
+        broadcast({ type: "drop_collect", id: dropId }, null, worldName);
+        return;
+      }
+    } catch (err) {
+      console.error("Unhandled websocket message error:", err);
+      send({ type: "error", message: "Server error" });
+    }
   });
-}
-
-function makeUsersRepo() {
-  return {
-    find: async () => {
-      const [rows] = await pool.query("SELECT id, username, passwordHash, createdAt FROM users");
-      return rows;
-    },
-    findOne: async (query = {}) => {
-      if (query.username !== undefined) {
-        const [rows] = await pool.query("SELECT id, username, passwordHash, createdAt FROM users WHERE username = ? LIMIT 1", [query.username]);
-        return rows[0];
-      }
-      if (query.id !== undefined) {
-        const [rows] = await pool.query("SELECT id, username, passwordHash, createdAt FROM users WHERE id = ? LIMIT 1", [query.id]);
-        return rows[0];
-      }
-      return undefined;
-    },
-    insert: async (doc) => {
-      const createdAt = doc.createdAt || formatDateForMySQL();
-      const [result] = await pool.query(
-        "INSERT INTO users (username, passwordHash, createdAt) VALUES (?, ?, ?)",
-        [doc.username, doc.passwordHash, createdAt]
-      );
-      return { id: result.insertId, username: doc.username, passwordHash: doc.passwordHash, createdAt };
-    },
-  };
-}
-
-function makeWorldRepo() {
-  return {
-    find: async (query = {}) => {
-      if (!query.worldName) return [];
-      const [rows] = await pool.query("SELECT worldName, x, y, tile FROM world_blocks WHERE worldName = ?", [query.worldName]);
-      return rows;
-    },
-    update: async (filter, doc) => {
-      const key = filter.key || doc.key;
-      if (!key) return;
-      await pool.query(
-        "INSERT INTO world_blocks (`key`, worldName, x, y, tile, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), tile=VALUES(tile), updatedAt=VALUES(updatedAt)",
-        [key, doc.worldName, doc.x, doc.y, doc.tile, doc.updatedAt || formatDateForMySQL()]
-      );
-    },
-    remove: async (filter) => {
-      if (filter.key) {
-        await pool.query("DELETE FROM world_blocks WHERE `key` = ?", [filter.key]);
-      }
-    },
-  };
-}
-
-function makeProfilesRepo() {
-  return {
-    findOne: async (query = {}) => {
-      if (!query.profileId) return undefined;
-      const [rows] = await pool.query("SELECT profileId, userId, worldName, spawnX, spawnY FROM profiles WHERE profileId = ? LIMIT 1", [query.profileId]);
-      return rows[0];
-    },
-    update: async (filter, doc, options = {}) => {
-      const profileId = filter.profileId || doc.profileId;
-      if (!profileId) return;
-      const payload = {
-        userId: doc.userId,
-        worldName: doc.worldName,
-        spawnX: doc.spawnX ?? null,
-        spawnY: doc.spawnY ?? null,
-      };
-      const upsert = Boolean(options.upsert);
-      const sql = upsert
-        ? "INSERT INTO profiles (profileId, userId, worldName, spawnX, spawnY) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), worldName=VALUES(worldName), spawnX=VALUES(spawnX), spawnY=VALUES(spawnY)"
-        : "UPDATE profiles SET userId=?, worldName=?, spawnX=?, spawnY=? WHERE profileId=?";
-      const params = upsert
-        ? [profileId, payload.userId, payload.worldName, payload.spawnX, payload.spawnY]
-        : [payload.userId, payload.worldName, payload.spawnX, payload.spawnY, profileId];
-      await pool.query(sql, params);
-    },
-  };
-}
-
-function makeGrowingPlantsRepo() {
-  return {
-    find: async (query = {}) => {
-      if (!query.worldName) return [];
-      const [rows] = await pool.query(
-        "SELECT `key`, worldName, x, y, sourceBlock, dropCount, totalTime, plantedAt, fullGrown, createdAt FROM growing_plants WHERE worldName = ?",
-        [query.worldName]
-      );
-      return rows;
-    },
-    update: async (filter, doc, options = {}) => {
-      const key = filter.key || doc.key;
-      if (!key) return;
-      const upsert = Boolean(options.upsert);
-      const payload = {
-        worldName: doc.worldName,
-        x: doc.x,
-        y: doc.y,
-        sourceBlock: doc.sourceBlock,
-        dropCount: doc.dropCount,
-        totalTime: doc.totalTime,
-        plantedAt: doc.plantedAt,
-        fullGrown: Boolean(doc.fullGrown),
-        createdAt: doc.createdAt || formatDateForMySQL(),
-      };
-      const sql = upsert
-        ? "INSERT INTO growing_plants (`key`, worldName, x, y, sourceBlock, dropCount, totalTime, plantedAt, fullGrown, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), x=VALUES(x), y=VALUES(y), sourceBlock=VALUES(sourceBlock), dropCount=VALUES(dropCount), totalTime=VALUES(totalTime), plantedAt=VALUES(plantedAt), fullGrown=VALUES(fullGrown), createdAt=VALUES(createdAt)"
-        : "UPDATE growing_plants SET worldName=?, x=?, y=?, sourceBlock=?, dropCount=?, totalTime=?, plantedAt=?, fullGrown=?, createdAt=? WHERE `key`=?";
-      const params = upsert
-        ? [key, payload.worldName, payload.x, payload.y, payload.sourceBlock, payload.dropCount, payload.totalTime, payload.plantedAt, payload.fullGrown, payload.createdAt]
-        : [payload.worldName, payload.x, payload.y, payload.sourceBlock, payload.dropCount, payload.totalTime, payload.plantedAt, payload.fullGrown, payload.createdAt, key];
-      await pool.query(sql, params);
-    },
-    remove: async (filter) => {
-      if (filter.key) {
-        await pool.query("DELETE FROM growing_plants WHERE `key` = ?", [filter.key]);
-      }
-    },
-  };
-}
-
-function makeInventoriesRepo() {
-  return {
-    findOne: async (query = {}) => {
-      const key = query.key;
-      if (!key) return undefined;
-      const [rows] = await pool.query("SELECT `key`, userId, inventory, updatedAt FROM inventories WHERE `key` = ? LIMIT 1", [key]);
-      const row = rows[0];
-      if (!row) return undefined;
-      let inventory = {};
-      try {
-        inventory = typeof row.inventory === "string" ? JSON.parse(row.inventory) : row.inventory || {};
-      } catch {
-        inventory = {};
-      }
-      return { key: row.key, userId: row.userId, inventory, updatedAt: row.updatedAt };
     },
     update: async (filter, doc, options = {}) => {
       const key = filter.key || doc.key;
