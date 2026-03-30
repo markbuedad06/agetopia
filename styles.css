@@ -900,11 +900,15 @@ body {
   display: flex;
   gap: 8px;
 }
+
+.action-btn {
+  width: 50px;
+
 /* Friends Chat */
 .friends-chat-toggle {
   position: fixed;
-  bottom: 24px;
-  right: 28px;
+  bottom: 110px;
+  right: 18px;
   padding: 0.65rem 0.9rem;
   border-radius: 12px;
   border: 1px solid #5e4c7e;
@@ -918,7 +922,7 @@ body {
 
 .friends-chat-panel {
   position: fixed;
-  bottom: 88px;
+  bottom: 110px;
   right: 16px;
   width: min(540px, 90vw);
   background: rgba(22, 16, 31, 0.98);
@@ -1117,6 +1121,20 @@ body {
 .friend-search-empty {
   font-size: 0.78rem;
   opacity: 0.8;
+}
+  height: 50px;
+  font-size: 1.2rem;
+  border-color: var(--accent-2);
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--accent-2);
+}
+
+.action-btn:active {
+  background: rgba(251, 191, 36, 0.3);
+}
+
+.action-btn:hover {
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.5);
 }
 
 @media (max-width: 900px) {
