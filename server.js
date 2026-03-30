@@ -68,6 +68,8 @@ let worldOwnersDB;
 let worldsDB;
 let dropsDB;
 let chatsDB;
+let friendsDB;
+let friendMessagesDB;
 const worldCache = new Map();
 const worldDrops = new Map(); // worldName -> Map(dropId, drop)
 const worldDropsLoaded = new Set(); // track which worlds have drops loaded from DB
@@ -261,6 +263,31 @@ async function ensureSchema() {
     floatTime FLOAT NOT NULL,
     updatedAt DATETIME NOT NULL,
     INDEX drop_world_idx (worldName)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS friend_pairs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    userLow INT NOT NULL,
+    userHigh INT NOT NULL,
+    status ENUM('pending','accepted') NOT NULL DEFAULT 'pending',
+    requestedBy INT NOT NULL,
+    createdAt DATETIME NOT NULL,
+    updatedAt DATETIME NOT NULL,
+    UNIQUE KEY pair_unique (userLow, userHigh),
+    INDEX friend_status_idx (status),
+    INDEX friend_user_low_idx (userLow),
+    INDEX friend_user_high_idx (userHigh)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS friend_messages (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    pairId INT NOT NULL,
+    senderId INT NOT NULL,
+    recipientId INT NOT NULL,
+    message TEXT NOT NULL,
+    createdAt DATETIME NOT NULL,
+    INDEX fm_pair_idx (pairId),
+    INDEX fm_created_idx (createdAt)
   )`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS chat_messages (
@@ -573,6 +600,96 @@ function makeDropsRepo() {
   };
 }
 
+function sortPair(a, b) {
+  const aNum = Number(a);
+  const bNum = Number(b);
+  return aNum < bNum ? [aNum, bNum] : [bNum, aNum];
+}
+
+function makeFriendPairsRepo() {
+  return {
+    findForUser: async (userId) => {
+      if (!userId) return [];
+      const [rows] = await pool.query(
+        `SELECT fp.id, fp.userLow, fp.userHigh, fp.status, fp.requestedBy, fp.createdAt, fp.updatedAt,
+                u1.username AS userLowName, u2.username AS userHighName
+         FROM friend_pairs fp
+         JOIN users u1 ON u1.id = fp.userLow
+         JOIN users u2 ON u2.id = fp.userHigh
+         WHERE fp.userLow = ? OR fp.userHigh = ?
+         ORDER BY fp.updatedAt DESC`,
+        [userId, userId]
+      );
+      return rows;
+    },
+    findPair: async (userA, userB) => {
+      if (!userA || !userB) return null;
+      const [low, high] = sortPair(userA, userB);
+      const [rows] = await pool.query(
+        "SELECT id, userLow, userHigh, status, requestedBy, createdAt, updatedAt FROM friend_pairs WHERE userLow = ? AND userHigh = ? LIMIT 1",
+        [low, high]
+      );
+      return rows[0] || null;
+    },
+    upsertPending: async (userA, userB, requestedBy) => {
+      const [low, high] = sortPair(userA, userB);
+      const now = formatDateForMySQL();
+      await pool.query(
+        `INSERT INTO friend_pairs (userLow, userHigh, status, requestedBy, createdAt, updatedAt)
+         VALUES (?, ?, 'pending', ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           status = IF(status = 'accepted', status, 'pending'),
+           requestedBy = VALUES(requestedBy),
+           updatedAt = VALUES(updatedAt)`,
+        [low, high, requestedBy, now, now]
+      );
+      const [rows] = await pool.query(
+        "SELECT id, userLow, userHigh, status, requestedBy, createdAt, updatedAt FROM friend_pairs WHERE userLow = ? AND userHigh = ? LIMIT 1",
+        [low, high]
+      );
+      return rows[0] || null;
+    },
+    accept: async (userA, userB) => {
+      const [low, high] = sortPair(userA, userB);
+      const now = formatDateForMySQL();
+      await pool.query(
+        "UPDATE friend_pairs SET status='accepted', updatedAt=? WHERE userLow=? AND userHigh=?",
+        [now, low, high]
+      );
+    },
+  };
+}
+
+function makeFriendMessagesRepo() {
+  return {
+    findRecentByPairs: async (pairIds = [], minutes = 1440) => {
+      if (!Array.isArray(pairIds) || pairIds.length === 0) return [];
+      const cutoff = formatDateForMySQL(new Date(Date.now() - minutes * 60 * 1000));
+      const placeholders = pairIds.map(() => "?").join(",");
+      const [rows] = await pool.query(
+        `SELECT id, pairId, senderId, recipientId, message, createdAt
+         FROM friend_messages
+         WHERE pairId IN (${placeholders}) AND createdAt >= ?
+         ORDER BY createdAt ASC`,
+        [...pairIds, cutoff]
+      );
+      return rows;
+    },
+    insert: async (doc) => {
+      const createdAt = doc.createdAt || formatDateForMySQL();
+      const [result] = await pool.query(
+        "INSERT INTO friend_messages (pairId, senderId, recipientId, message, createdAt) VALUES (?, ?, ?, ?, ?)",
+        [doc.pairId, doc.senderId, doc.recipientId, doc.message || "", createdAt]
+      );
+      return { id: result.insertId, createdAt };
+    },
+    cleanup: async () => {
+      const cutoff = formatDateForMySQL(new Date(Date.now() - 24 * 60 * 60 * 1000));
+      await pool.query("DELETE FROM friend_messages WHERE createdAt < ?", [cutoff]);
+    },
+  };
+}
+
 function makeChatsRepo() {
   return {
     findRecent: async (worldName, windowMinutes = 60) => {
@@ -612,8 +729,11 @@ async function initStores() {
   worldOwnersDB = makeWorldOwnersRepo();
   worldsDB = makeWorldsRepo();
   dropsDB = makeDropsRepo();
+  friendsDB = makeFriendPairsRepo();
+  friendMessagesDB = makeFriendMessagesRepo();
   chatsDB = makeChatsRepo();
   await chatsDB.cleanup();
+  await friendMessagesDB.cleanup();
   
   // Run migration to convert inventory from ID-based to name-based
   await migrateInventoryToNames();
@@ -1130,6 +1250,17 @@ function broadcast(message, exceptId = null, worldName = null) {
   }
 }
 
+function sendToUser(userId, message) {
+  if (!userId) return;
+  const payload = JSON.stringify(message);
+  for (const [, player] of players.entries()) {
+    if (String(player.userId) !== String(userId)) continue;
+    if (player.ws.readyState === WebSocket.OPEN) {
+      player.ws.send(payload);
+    }
+  }
+}
+
 function parseTokenFromRequest(req) {
   const requestUrl = new URL(req.url, "http://localhost");
   const token = requestUrl.searchParams.get("token");
@@ -1371,6 +1502,24 @@ wss.on("connection", async (ws, req) => {
     createdAt: chat.createdAt,
   }));
 
+  // Load friends + recent friend messages (last 24h)
+  const friendPairsRaw = await friendsDB.findForUser(player.userId);
+  const friendPairs = friendPairsRaw.map((fp) => {
+    const friendId = String(fp.userLow) === String(player.userId) ? fp.userHigh : fp.userLow;
+    const friendName = String(fp.userLow) === String(player.userId) ? fp.userHighName : fp.userLowName;
+    return {
+      pairId: fp.id,
+      friendUserId: friendId,
+      friendUsername: friendName,
+      status: fp.status,
+      requestedBy: fp.requestedBy,
+      createdAt: fp.createdAt,
+      updatedAt: fp.updatedAt,
+    };
+  });
+  const acceptedPairIds = friendPairs.filter(p => p.status === "accepted").map(p => p.pairId);
+  const recentFriendMessages = acceptedPairIds.length ? await friendMessagesDB.findRecentByPairs(acceptedPairIds, 1440) : [];
+
   ws.send(JSON.stringify({
     type: "init",
     id: player.id,
@@ -1385,6 +1534,8 @@ wss.on("connection", async (ws, req) => {
     plants: plantsList,
     drops: Array.from(getWorldDrops(worldName).values()),
     chats: chatHistory,
+    friends: friendPairs,
+    friendMessages: recentFriendMessages,
   }));
 
   broadcast({
@@ -1537,6 +1688,175 @@ wss.on("connection", async (ws, req) => {
       } catch (err) {
         console.error("Error in chat message:", err);
         send({ type: "error", message: "Chat failed" });
+      }
+      return;
+    }
+
+    if (msg.type === "friend_search") {
+      try {
+        const q = String(msg.query || "").trim();
+        if (!q) return;
+        const like = `%${q}%`;
+        const [rows] = await pool.query(
+          "SELECT id, username FROM users WHERE username LIKE ? AND id <> ? LIMIT 10",
+          [like, player.userId]
+        );
+        send({ type: "friend_search_results", results: rows.map(r => ({ id: r.id, username: r.username })) });
+      } catch (err) {
+        console.error("Error in friend_search:", err);
+        send({ type: "error", message: "Friend search failed" });
+      }
+      return;
+    }
+
+    if (msg.type === "friend_request") {
+      try {
+        const targetId = Number(msg.userId);
+        if (!Number.isFinite(targetId) || targetId <= 0) return;
+        if (String(targetId) === String(player.userId)) return;
+
+        const targetUser = await usersDB.findOne({ id: targetId });
+        if (!targetUser) {
+          send({ type: "error", message: "Player not found" });
+          return;
+        }
+
+        const pair = await friendsDB.upsertPending(player.userId, targetId, player.userId);
+        const friendPayload = {
+          pairId: pair?.id,
+          friendUserId: targetId,
+          friendUsername: targetUser.username,
+          status: pair?.status || "pending",
+          requestedBy: pair?.requestedBy || player.userId,
+          createdAt: pair?.createdAt,
+          updatedAt: pair?.updatedAt,
+        };
+        send({ type: "friend_pair_update", pair: friendPayload });
+
+        // Notify target user
+        sendToUser(targetId, {
+          type: "friend_pair_update",
+          pair: {
+            pairId: pair?.id,
+            friendUserId: player.userId,
+            friendUsername: player.username,
+            status: pair?.status || "pending",
+            requestedBy: pair?.requestedBy || player.userId,
+            createdAt: pair?.createdAt,
+            updatedAt: pair?.updatedAt,
+          },
+        });
+      } catch (err) {
+        console.error("Error in friend_request:", err);
+        send({ type: "error", message: "Friend request failed" });
+      }
+      return;
+    }
+
+    if (msg.type === "friend_accept") {
+      try {
+        const pairId = Number(msg.pairId);
+        const otherUserId = Number(msg.userId);
+        let pair = null;
+        if (Number.isFinite(pairId) && pairId > 0) {
+          const [rows] = await pool.query("SELECT * FROM friend_pairs WHERE id = ? LIMIT 1", [pairId]);
+          pair = rows[0] || null;
+        } else if (Number.isFinite(otherUserId) && otherUserId > 0) {
+          pair = await friendsDB.findPair(player.userId, otherUserId);
+        }
+        if (!pair) {
+          send({ type: "error", message: "Friend link not found" });
+          return;
+        }
+
+        const isMember = String(pair.userLow) === String(player.userId) || String(pair.userHigh) === String(player.userId);
+        if (!isMember) return;
+
+        await friendsDB.accept(pair.userLow, pair.userHigh);
+        const updatedRows = await friendsDB.findPair(pair.userLow, pair.userHigh);
+        const friendId = String(updatedRows.userLow) === String(player.userId) ? updatedRows.userHigh : updatedRows.userLow;
+        const friendUser = await usersDB.findOne({ id: friendId });
+        const payloadSelf = {
+          pairId: updatedRows.id,
+          friendUserId: friendId,
+          friendUsername: friendUser?.username || "Player",
+          status: updatedRows.status,
+          requestedBy: updatedRows.requestedBy,
+          createdAt: updatedRows.createdAt,
+          updatedAt: updatedRows.updatedAt,
+        };
+        send({ type: "friend_pair_update", pair: payloadSelf });
+
+        const payloadOther = {
+          pairId: updatedRows.id,
+          friendUserId: player.userId,
+          friendUsername: player.username,
+          status: updatedRows.status,
+          requestedBy: updatedRows.requestedBy,
+          createdAt: updatedRows.createdAt,
+          updatedAt: updatedRows.updatedAt,
+        };
+        sendToUser(friendId, { type: "friend_pair_update", pair: payloadOther });
+      } catch (err) {
+        console.error("Error in friend_accept:", err);
+        send({ type: "error", message: "Friend accept failed" });
+      }
+      return;
+    }
+
+    if (msg.type === "friend_history") {
+      try {
+        const pairId = Number(msg.pairId);
+        if (!Number.isFinite(pairId)) return;
+        const [rows] = await pool.query("SELECT userLow, userHigh, status FROM friend_pairs WHERE id=? LIMIT 1", [pairId]);
+        const pair = rows[0];
+        if (!pair) return;
+        const isMember = String(pair.userLow) === String(player.userId) || String(pair.userHigh) === String(player.userId);
+        if (!isMember || pair.status !== "accepted") return;
+        const messages = await friendMessagesDB.findRecentByPairs([pairId], 1440);
+        send({ type: "friend_history", pairId, messages });
+      } catch (err) {
+        console.error("Error in friend_history:", err);
+        send({ type: "error", message: "Friend history failed" });
+      }
+      return;
+    }
+
+    if (msg.type === "friend_chat_send") {
+      try {
+        const pairId = Number(msg.pairId);
+        const text = String(msg.text || "").trim().slice(0, 200);
+        if (!Number.isFinite(pairId) || !text) return;
+        const [rows] = await pool.query("SELECT * FROM friend_pairs WHERE id=? LIMIT 1", [pairId]);
+        const pair = rows[0];
+        if (!pair || pair.status !== "accepted") return;
+        const isMember = String(pair.userLow) === String(player.userId) || String(pair.userHigh) === String(player.userId);
+        if (!isMember) return;
+        const friendId = String(pair.userLow) === String(player.userId) ? pair.userHigh : pair.userLow;
+        const { id: messageId, createdAt } = await friendMessagesDB.insert({
+          pairId,
+          senderId: player.userId,
+          recipientId: friendId,
+          message: text,
+        });
+        await friendMessagesDB.cleanup();
+        const payload = {
+          type: "friend_message",
+          pairId,
+          message: {
+            id: messageId,
+            pairId,
+            senderId: player.userId,
+            recipientId: friendId,
+            message: text,
+            createdAt,
+          },
+        };
+        send(payload);
+        sendToUser(friendId, payload);
+      } catch (err) {
+        console.error("Error in friend_chat_send:", err);
+        send({ type: "error", message: "Friend message failed" });
       }
       return;
     }
@@ -1799,6 +2119,7 @@ async function start() {
   
   setInterval(() => {
     chatsDB.cleanup().catch((err) => console.error("Chat cleanup failed:", err));
+    friendMessagesDB.cleanup().catch((err) => console.error("Friend message cleanup failed:", err));
   }, 5 * 60 * 1000);
 
   server.listen(PORT, () => {

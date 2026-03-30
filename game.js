@@ -28,6 +28,17 @@ const chatInput = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
 const chatHistoryPanel = document.getElementById("chatHistoryPanel");
 const chatHistoryList = document.getElementById("chatHistoryList");
+const friendsChatToggle = document.getElementById("friendsChatToggle");
+const friendsChatPanel = document.getElementById("friendsChatPanel");
+const friendsChatClose = document.getElementById("friendsChatClose");
+const friendSearchInput = document.getElementById("friendSearchInput");
+const friendSearchBtn = document.getElementById("friendSearchBtn");
+const friendSearchResults = document.getElementById("friendSearchResults");
+const friendsListEl = document.getElementById("friendsList");
+const friendsConversationHeader = document.getElementById("friendsConversationHeader");
+const friendsMessagesEl = document.getElementById("friendsMessages");
+const friendsMessageInput = document.getElementById("friendsMessageInput");
+const friendsMessageSend = document.getElementById("friendsMessageSend");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const graphicsScaleEl = document.getElementById("graphicsScale");
 const toggleReachRingEl = document.getElementById("toggleReachRing");
@@ -142,6 +153,13 @@ const chatHistory = [];
 const chatHistoryIds = new Set();
 const CHAT_HISTORY_WINDOW_MS = 60 * 60 * 1000;
 let chatPruneTimer = null;
+const friendsState = {
+  pairs: [],
+  messages: new Map(), // pairId -> array of messages
+  activePairId: null,
+  searchResults: [],
+};
+let friendSearchDebounce = null;
 let nextDropId = 1;
 let selectedInventoryTile = null;
 
@@ -821,6 +839,47 @@ function setupChatUI() {
   });
 }
 
+function setupFriendsChatUI() {
+  if (!friendsChatToggle || !friendsChatPanel) return;
+
+  friendsChatToggle.addEventListener("click", () => {
+    toggleFriendsChat();
+  });
+
+  friendsChatClose?.addEventListener("click", () => {
+    toggleFriendsChat(false);
+  });
+
+  friendSearchBtn?.addEventListener("click", () => {
+    const q = friendSearchInput?.value?.trim();
+    if (q) sendSocket({ type: "friend_search", query: q });
+  });
+
+  friendSearchInput?.addEventListener("input", () => {
+    const q = friendSearchInput.value.trim();
+    if (friendSearchDebounce) clearTimeout(friendSearchDebounce);
+    friendSearchDebounce = window.setTimeout(() => {
+      if (q.length >= 2) {
+        sendSocket({ type: "friend_search", query: q });
+      }
+    }, 220);
+  });
+
+  friendsMessageSend?.addEventListener("click", () => {
+    const text = friendsMessageInput?.value?.trim();
+    if (!text || !friendsState.activePairId) return;
+    sendSocket({ type: "friend_chat_send", pairId: friendsState.activePairId, text });
+    friendsMessageInput.value = "";
+  });
+
+  friendsMessageInput?.addEventListener("keydown", (e) => {
+    if (e.code === "Enter") {
+      e.preventDefault();
+      friendsMessageSend?.click();
+    }
+  });
+}
+
 function normalizeChatTimestamp(ts) {
   if (!ts) return Date.now();
   const stamped = ts.includes("T") ? ts : `${ts.replace(" ", "T")}Z`;
@@ -908,6 +967,154 @@ function bootChatHistoryPruner() {
       renderChatHistory();
     }
   }, 30000);
+}
+
+function renderFriendSearchResults() {
+  if (!friendSearchResults) return;
+  friendSearchResults.innerHTML = "";
+  if (friendsState.searchResults.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "friend-search-empty";
+    empty.textContent = "No players found";
+    friendSearchResults.appendChild(empty);
+    return;
+  }
+  friendsState.searchResults.forEach((user) => {
+    const row = document.createElement("div");
+    row.className = "friend-search-row";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = user.username;
+    const btn = document.createElement("button");
+    btn.className = "friend-action-btn";
+    btn.textContent = "Add";
+    btn.addEventListener("click", () => {
+      sendSocket({ type: "friend_request", userId: user.id });
+    });
+    row.appendChild(name);
+    row.appendChild(btn);
+    friendSearchResults.appendChild(row);
+  });
+}
+
+function setActiveFriend(pairId) {
+  friendsState.activePairId = pairId;
+  renderFriendsList();
+  renderFriendMessages();
+  if (pairId && ONLINE_MODE && networkState.connected) {
+    sendSocket({ type: "friend_history", pairId });
+  }
+}
+
+function renderFriendsList() {
+  if (!friendsListEl) return;
+  friendsListEl.innerHTML = "";
+  if (!friendsState.pairs.length) {
+    const empty = document.createElement("div");
+    empty.className = "friend-empty";
+    empty.textContent = "No friends yet";
+    friendsListEl.appendChild(empty);
+    return;
+  }
+
+  friendsState.pairs.forEach((pair) => {
+    const row = document.createElement("div");
+    row.className = `friend-row ${pair.status}`;
+    const meta = document.createElement("div");
+    meta.className = "name";
+    meta.textContent = pair.friendUsername || "Player";
+    const status = document.createElement("div");
+    status.className = "status";
+    status.textContent = pair.status === "accepted" ? "Friends" : "Pending";
+    const btnWrap = document.createElement("div");
+
+    if (pair.status === "pending" && String(pair.friendUserId) === String(pair.requestedBy)) {
+      // We received the request
+      const acceptBtn = document.createElement("button");
+      acceptBtn.className = "friend-action-btn";
+      acceptBtn.textContent = "Accept";
+      acceptBtn.addEventListener("click", () => {
+        sendSocket({ type: "friend_accept", pairId: pair.pairId, userId: pair.friendUserId });
+      });
+      btnWrap.appendChild(acceptBtn);
+    } else if (pair.status === "accepted") {
+      const openBtn = document.createElement("button");
+      openBtn.className = "friend-action-btn secondary";
+      openBtn.textContent = "Open";
+      openBtn.addEventListener("click", () => setActiveFriend(pair.pairId));
+      btnWrap.appendChild(openBtn);
+    } else {
+      const pending = document.createElement("span");
+      pending.className = "status";
+      pending.textContent = "Request sent";
+      btnWrap.appendChild(pending);
+    }
+
+    row.appendChild(meta);
+    row.appendChild(status);
+    row.appendChild(btnWrap);
+    friendsListEl.appendChild(row);
+  });
+}
+
+function renderFriendMessages() {
+  if (!friendsMessagesEl) return;
+  friendsMessagesEl.innerHTML = "";
+  const pairId = friendsState.activePairId;
+  if (!pairId) {
+    friendsConversationHeader.textContent = "Select a friend to chat";
+    return;
+  }
+  const pair = friendsState.pairs.find((p) => p.pairId === pairId);
+  if (pair) {
+    friendsConversationHeader.textContent = pair.friendUsername || "Friend";
+  }
+  const msgs = friendsState.messages.get(pairId) || [];
+  if (!msgs.length) {
+    const empty = document.createElement("div");
+    empty.className = "friend-empty";
+    empty.textContent = "No messages yet";
+    friendsMessagesEl.appendChild(empty);
+    return;
+  }
+  msgs.forEach((m) => {
+    const row = document.createElement("div");
+    row.className = `friend-message-row ${String(m.senderId) === String(networkState.userId) ? "me" : ""}`;
+    const meta = document.createElement("div");
+    meta.className = "friend-message-meta";
+    const time = new Date(m.createdAt || Date.now());
+    meta.textContent = `${String(m.senderId) === String(networkState.userId) ? "You" : pair?.friendUsername || "Friend"} • ${time.toLocaleTimeString()}`;
+    const body = document.createElement("div");
+    body.textContent = m.message;
+    row.appendChild(meta);
+    row.appendChild(body);
+    friendsMessagesEl.appendChild(row);
+  });
+  friendsMessagesEl.scrollTop = friendsMessagesEl.scrollHeight;
+}
+
+function addFriendMessages(pairId, newMessages) {
+  if (!pairId) return;
+  if (!friendsState.messages.has(pairId)) friendsState.messages.set(pairId, []);
+  const arr = friendsState.messages.get(pairId);
+  newMessages.forEach((msg) => {
+    arr.push(msg);
+  });
+  arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  if (friendsState.activePairId === pairId) {
+    renderFriendMessages();
+  }
+}
+
+function toggleFriendsChat(open) {
+  if (!friendsChatPanel) return;
+  const shouldOpen = open !== undefined ? open : friendsChatPanel.classList.contains("hidden");
+  if (shouldOpen) {
+    friendsChatPanel.classList.remove("hidden");
+    friendsMessageInput?.focus();
+  } else {
+    friendsChatPanel.classList.add("hidden");
+  }
 }
 
 function unlockGameplay() {
@@ -2149,6 +2356,32 @@ function connectSocket(token) {
         });
       }
       renderChatHistory();
+
+      // Friends init
+      friendsState.pairs = Array.isArray(msg.friends) ? msg.friends.map((p) => ({
+        pairId: p.pairId,
+        friendUserId: String(p.friendUserId),
+        friendUsername: p.friendUsername,
+        status: p.status,
+        requestedBy: p.requestedBy,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+      })) : [];
+      friendsState.messages.clear();
+      if (Array.isArray(msg.friendMessages)) {
+        msg.friendMessages.forEach((m) => {
+          addFriendMessages(m.pairId, [{
+            id: m.id,
+            pairId: m.pairId,
+            senderId: m.senderId,
+            recipientId: m.recipientId,
+            message: m.message,
+            createdAt: m.createdAt,
+          }]);
+        });
+      }
+      renderFriendsList();
+      renderFriendMessages();
       return;
     }
 
@@ -2333,6 +2566,63 @@ function connectSocket(token) {
       return;
     }
 
+    if (msg.type === "friend_search_results") {
+      friendsState.searchResults = Array.isArray(msg.results) ? msg.results : [];
+      renderFriendSearchResults();
+      return;
+    }
+
+    if (msg.type === "friend_pair_update") {
+      const pair = msg.pair;
+      if (!pair || pair.pairId == null) return;
+      const existingIdx = friendsState.pairs.findIndex((p) => p.pairId === pair.pairId);
+      const normalized = {
+        pairId: pair.pairId,
+        friendUserId: String(pair.friendUserId),
+        friendUsername: pair.friendUsername,
+        status: pair.status,
+        requestedBy: pair.requestedBy,
+        createdAt: pair.createdAt,
+        updatedAt: pair.updatedAt,
+      };
+      if (existingIdx >= 0) {
+        friendsState.pairs[existingIdx] = normalized;
+      } else {
+        friendsState.pairs.push(normalized);
+      }
+      renderFriendsList();
+      renderFriendMessages();
+      return;
+    }
+
+    if (msg.type === "friend_history") {
+      if (!Array.isArray(msg.messages)) return;
+      friendsState.messages.set(msg.pairId, []);
+      addFriendMessages(msg.pairId, msg.messages.map(m => ({
+        id: m.id,
+        pairId: m.pairId,
+        senderId: m.senderId,
+        recipientId: m.recipientId,
+        message: m.message,
+        createdAt: m.createdAt,
+      })));
+      return;
+    }
+
+    if (msg.type === "friend_message") {
+      if (msg.message && msg.pairId != null) {
+        addFriendMessages(msg.pairId, [{
+          id: msg.message.id,
+          pairId: msg.message.pairId,
+          senderId: msg.message.senderId,
+          recipientId: msg.message.recipientId,
+          message: msg.message.message,
+          createdAt: msg.message.createdAt,
+        }]);
+      }
+      return;
+    }
+
     if (msg.type === "world_owner_set") {
       // World has been claimed by a player
       if (msg.userId) {
@@ -2473,6 +2763,7 @@ async function setupAuthPanel() {
   loadSettings();
   setupMenuInteractions();
   setupChatUI();
+  setupFriendsChatUI();
   renderChatHistory();
   bootChatHistoryPruner();
   loadInventoryState();

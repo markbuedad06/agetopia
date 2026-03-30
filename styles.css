@@ -246,7 +246,7 @@ body {
 .chat-bar {
   position: fixed;
   top: 70px;
-  left: 14px;
+  left: 120px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.4rem;
@@ -903,6 +903,225 @@ body {
 
 .action-btn {
   width: 50px;
+
+/* Friends Chat */
+.friends-chat-toggle {
+  position: fixed;
+  bottom: 90px;
+  right: 16px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid #5e4c7e;
+  background: linear-gradient(135deg, #2b5d44, #3a2b4f);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 45;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
+}
+
+.friends-chat-panel {
+  position: fixed;
+  bottom: 110px;
+  right: 16px;
+  width: min(540px, 90vw);
+  background: rgba(22, 16, 31, 0.98);
+  border: 1px solid #5e4c7e;
+  border-radius: 14px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  padding: 0.75rem;
+  z-index: 95;
+  display: grid;
+  gap: 0.6rem;
+  backdrop-filter: blur(6px);
+}
+
+.friends-chat-panel.hidden {
+  display: none;
+}
+
+.friends-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.friends-chat-close {
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  background: #2a203a;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.25rem 0.45rem;
+}
+
+.friends-chat-search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+}
+
+.friends-chat-search input {
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  background: #2a203a;
+  color: var(--text);
+}
+
+.friends-chat-search button {
+  border: 1px solid #3a9066;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  background: #2b5d44;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.friend-search-results {
+  max-height: 120px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.friend-search-row,
+.friend-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid rgba(110, 231, 183, 0.14);
+  border-radius: 10px;
+  background: rgba(42, 32, 58, 0.5);
+}
+
+.friend-row.pending {
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.friend-row.accepted {
+  border-color: rgba(110, 231, 183, 0.5);
+}
+
+.friend-row .name,
+.friend-search-row .name {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.friend-row .status {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.friend-action-btn {
+  border: 1px solid #3a9066;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  background: #2b5d44;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.friend-action-btn.secondary {
+  border-color: #5e4c7e;
+  background: #2a203a;
+}
+
+.friends-chat-body {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 0.6rem;
+  min-height: 240px;
+}
+
+.friends-list {
+  border: 1px solid #5e4c7e;
+  border-radius: 10px;
+  padding: 0.45rem;
+  display: grid;
+  gap: 0.35rem;
+  max-height: 320px;
+  overflow-y: auto;
+  background: rgba(27, 20, 39, 0.6);
+}
+
+.friends-conversation {
+  border: 1px solid #5e4c7e;
+  border-radius: 10px;
+  padding: 0.45rem;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.35rem;
+  background: rgba(27, 20, 39, 0.75);
+}
+
+.friends-conversation-header {
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.friends-messages {
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.3rem;
+  padding-right: 0.2rem;
+}
+
+.friend-message-row {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  background: rgba(42, 32, 58, 0.55);
+  border: 1px solid rgba(110, 231, 183, 0.12);
+  font-size: 0.82rem;
+}
+
+.friend-message-row.me {
+  border-color: rgba(110, 231, 183, 0.5);
+  background: rgba(43, 93, 68, 0.4);
+}
+
+.friend-message-meta {
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.friends-message-input {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem;
+}
+
+.friends-message-input input {
+  border: 1px solid #5e4c7e;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  background: #2a203a;
+  color: var(--text);
+}
+
+.friends-message-input button {
+  border: 1px solid #3a9066;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  background: #2b5d44;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.friend-empty,
+.friend-search-empty {
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
   height: 50px;
   font-size: 1.2rem;
   border-color: var(--accent-2);

@@ -98,6 +98,31 @@
         <button id="dropCancelBtn" type="button" class="menu-item">Cancel</button>
       </div>
     </div>
+
+    <!-- Friends Chat -->
+    <button id="friendsChatToggle" class="friends-chat-toggle" type="button" aria-label="Friends chat">Friends Chat</button>
+    <div id="friendsChatPanel" class="friends-chat-panel hidden" role="dialog" aria-label="Friends chat">
+      <div class="friends-chat-header">
+        <span>Friends</span>
+        <button id="friendsChatClose" class="friends-chat-close" type="button" aria-label="Close friends chat">×</button>
+      </div>
+      <div class="friends-chat-search">
+        <input id="friendSearchInput" type="text" placeholder="Search players" aria-label="Search players" maxlength="24" />
+        <button id="friendSearchBtn" type="button">Search</button>
+      </div>
+      <div id="friendSearchResults" class="friend-search-results"></div>
+      <div class="friends-chat-body">
+        <div class="friends-list" id="friendsList" aria-label="Friends list"></div>
+        <div class="friends-conversation">
+          <div id="friendsConversationHeader" class="friends-conversation-header">Select a friend to chat</div>
+          <div id="friendsMessages" class="friends-messages" role="log" aria-live="polite"></div>
+          <div class="friends-message-input">
+            <input id="friendsMessageInput" type="text" placeholder="Type a message" aria-label="Friend message" maxlength="200" />
+            <button id="friendsMessageSend" type="button">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <script src="game.js"></script>
 </body>
