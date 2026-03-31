@@ -1427,15 +1427,15 @@ body {
   }
 
   .arrow-btn {
-    width: 42px;
-    height: 42px;
-    font-size: 1rem;
+    width: 64px;
+    height: 64px;
+    font-size: 1.5rem;
   }
 
   .action-btn.jump {
-    width: 42px;
-    height: 42px;
-    font-size: 1rem;
+    width: 72px;
+    height: 72px;
+    font-size: 1.7rem;
   }
 
   .inventory-bar {
