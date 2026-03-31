@@ -1621,3 +1621,38 @@ body {
     right: 8px;
   }
 }
+
+/* Full-screen friends chat on mobile widths */
+@media (max-width: 900px) {
+  .friends-chat-panel {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    padding: 0.5rem;
+    border-radius: 0;
+    gap: 0.4rem;
+    z-index: 200;
+  }
+
+  .friends-chat-body {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+    height: calc(100vh - 210px);
+    min-height: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .friends-list {
+    max-height: 45vh;
+  }
+
+  .friends-messages {
+    max-height: calc(100vh - 320px);
+  }
+}
