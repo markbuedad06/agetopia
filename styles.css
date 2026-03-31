@@ -1354,7 +1354,7 @@ body {
   .chat-history-panel {
     top: 14px;
     left: 8px;
-    width: calc(100% - 16px);
+    width: min(320px, 92vw);
     max-height: 110px;
   }
 
