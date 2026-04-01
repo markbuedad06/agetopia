@@ -193,14 +193,15 @@ async function ensureDropsLoaded(worldName) {
   const rows = await dropsDB.find({ worldName });
   const dropsMap = getWorldDrops(worldName);
   for (const row of rows) {
+    const pos = normalizeDropPosition(row.x, row.y);
     dropsMap.set(String(row.id), {
       id: String(row.id),
       tile: Number(row.tile),
-      x: Number(row.x),
-      y: Number(row.y),
-      vx: Number(row.vx) || 0,
-      vy: Number(row.vy) || 0,
-      floatY: Number(row.floatY) || 0,
+      x: pos.x,
+      y: pos.y,
+      vx: 0,
+      vy: 0,
+      floatY: pos.y,
       floatTime: Number(row.floatTime) || 0,
       count: normalizeDropCount(row.itemCount),
     });
