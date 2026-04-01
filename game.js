@@ -227,11 +227,14 @@ function findStackDrop(tile, tx, ty) {
   return null;
 }
 
-function spawnDropStack(tile, x, y, count = 1) {
+function spawnDropStack(tile, x, y, count = 1, options = {}) {
   const itemId = Number(tile);
   if (!Number.isFinite(itemId)) return;
   const amount = normalizeDropCount(count);
   const pos = normalizeDropPosition(x, y);
+  const lockMsRaw = Number(options.pickupDelayMs);
+  const pickupDelayMs = Number.isFinite(lockMsRaw) ? Math.max(0, Math.min(5000, Math.floor(lockMsRaw))) : 0;
+  const pickupLockedUntil = pickupDelayMs > 0 ? Date.now() + pickupDelayMs : 0;
 
   if (ONLINE_MODE && networkState.connected) {
     sendSocket({
@@ -244,6 +247,7 @@ function spawnDropStack(tile, x, y, count = 1) {
       vy: 0,
       floatY: pos.y,
       floatTime: 0,
+      pickupDelayMs,
     });
     return;
   }
@@ -257,6 +261,9 @@ function spawnDropStack(tile, x, y, count = 1) {
     existing.floatTime = 0;
     existing.vx = 0;
     existing.vy = 0;
+    if (pickupLockedUntil > 0) {
+      existing.pickupLockedUntil = Math.max(Number(existing.pickupLockedUntil) || 0, pickupLockedUntil);
+    }
     return;
   }
 
@@ -267,6 +274,7 @@ function spawnDropStack(tile, x, y, count = 1) {
     y: pos.y,
     count: amount,
     floatTime: 0,
+    pickupLockedUntil,
   });
   if (!drop) return;
   drops.set(drop.id, drop);
