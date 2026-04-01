@@ -71,6 +71,11 @@ const PUNCH_ANIM_MS = 180;
 const DIGIT_COMBO_TIMEOUT_MS = 1600;
 const KNOCKBACK_PUSH = 360;
 const KNOCKBACK_LIFT = 240;
+const GRAVITY = 1200;
+const MAX_FALL_SPEED = 900;
+const MAX_JUMP_HEIGHT_BLOCKS = 3;
+const JUMP_MAX_VELOCITY = Math.sqrt(2 * GRAVITY * TILE * MAX_JUMP_HEIGHT_BLOCKS);
+const JUMP_RELEASE_VELOCITY = JUMP_MAX_VELOCITY * 0.42;
 const DROP_FLOAT_SPEED = 80;
 const MANUAL_DROP_FORWARD_OFFSET = TILE + 8;
 const MANUAL_DROP_PICKUP_LOCK_MS = 900;
@@ -450,7 +455,7 @@ const player = {
   vx: 0,
   vy: 0,
   speed: 290,
-  jump: 500,
+  jump: JUMP_MAX_VELOCITY,
   onGround: false,
   facing: 1,
   reach: 3,
@@ -478,6 +483,7 @@ let currentNow = performance.now();
 let digitCombo = "";
 let digitComboExpiresAt = 0;
 let chatRecentlyClosed = false;
+let jumpHeldLastFrame = false;
 
 function isChatFocused() {
   const active = document.activeElement;
@@ -3195,7 +3201,7 @@ function update(dt, now) {
   const moveLeft = keys.has("KeyA") || keys.has("ArrowLeft");
   const moveRight = keys.has("KeyD") || keys.has("ArrowRight");
   const moveDown = keys.has("KeyS") || keys.has("ArrowDown");
-  const jump = keys.has("KeyW") || keys.has("ArrowUp") || keys.has("Space");
+  const jumpHeld = keys.has("KeyW") || keys.has("ArrowUp") || keys.has("Space");
 
   let desiredVX = 0;
   if (moveLeft) desiredVX -= player.speed;
@@ -3221,13 +3227,23 @@ function update(dt, now) {
     Math.abs(player.vy) > 40 ||
     moveDown;
 
-  if (jump && player.onGround) {
+  const jumpPressed = jumpHeld && !jumpHeldLastFrame;
+  const jumpReleased = !jumpHeld && jumpHeldLastFrame;
+
+  if (jumpPressed && player.onGround) {
     player.vy = -player.jump;
     player.onGround = false;
   }
 
-  player.vy += 1200 * dt;
-  if (player.vy > 900) player.vy = 900;
+  if (jumpReleased && player.vy < -JUMP_RELEASE_VELOCITY) {
+    // Releasing jump early trims upward velocity for shorter jumps.
+    player.vy = -JUMP_RELEASE_VELOCITY;
+  }
+
+  jumpHeldLastFrame = jumpHeld;
+
+  player.vy += GRAVITY * dt;
+  if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
 
   moveWithCollisions(dt);
   handleLavaDamage(now);
