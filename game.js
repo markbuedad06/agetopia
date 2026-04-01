@@ -79,10 +79,11 @@ const JUMP_RELEASE_VELOCITY = JUMP_MAX_VELOCITY * 0.42;
 const DROP_FLOAT_SPEED = 80;
 const MANUAL_DROP_FORWARD_OFFSET = TILE + 8;
 const MANUAL_DROP_PICKUP_LOCK_MS = 900;
+const PLAYER_HITBOX_SIZE = TILE * 0.8;
 const LAVA_DAMAGE = 15;
 const LAVA_COOLDOWN_MS = 900;
 const LAVA_KNOCKBACK = 420;
-const LAVA_CONTACT_INSET = 6;
+const LAVA_CONTACT_INSET = 0;
 const LAVA_TILE = 16;
 
 const tileDefs = {
@@ -451,8 +452,8 @@ function getItemRarity(itemId) {
 const player = {
   x: 15 * TILE,
   y: 30 * TILE,
-  w: 24,
-  h: TILE,
+  w: PLAYER_HITBOX_SIZE,
+  h: PLAYER_HITBOX_SIZE,
   vx: 0,
   vy: 0,
   speed: 290,
@@ -3171,8 +3172,8 @@ function handleLavaDamage(now) {
       if (getTile(tx, ty) !== LAVA_TILE) continue;
       const tileX = tx * TILE;
       const tileY = ty * TILE;
-      const xOverlap = contactRight > tileX && contactLeft < tileX + TILE;
-      const yOverlap = contactBottom > tileY && contactTop < tileY + TILE;
+      const xOverlap = contactRight >= tileX && contactLeft <= tileX + TILE;
+      const yOverlap = contactBottom >= tileY && contactTop <= tileY + TILE;
       if (xOverlap && yOverlap) {
         lavaHit = { tx, ty };
         break;
