@@ -2191,7 +2191,22 @@ wss.on("connection", async (ws, req) => {
       if ((Number(drop.pickupLockedUntil) || 0) > Date.now()) {
         return;
       }
-      const playerTile = getPlayerCenterTile(player);
+      const clientX = Number(msg.x);
+      const clientY = Number(msg.y);
+      if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
+        player.x = clientX;
+        player.y = clientY;
+      }
+
+      let playerTile = getPlayerCenterTile(player);
+      const clientTx = Number(msg.tx);
+      const clientTy = Number(msg.ty);
+      if (Number.isInteger(clientTx) && Number.isInteger(clientTy)) {
+        playerTile = {
+          tx: Math.max(0, Math.min(WORLD_WIDTH - 1, clientTx)),
+          ty: Math.max(0, Math.min(WORLD_HEIGHT - 1, clientTy)),
+        };
+      }
       const dropTile = normalizeDropPosition(drop.x, drop.y);
       if (dropTile.tx !== playerTile.tx || dropTile.ty !== playerTile.ty) {
         return;
