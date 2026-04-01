@@ -42,6 +42,7 @@ const LAVA_DAMAGE = 15;
 const LAVA_COOLDOWN_MS = 900;
 const LAVA_KNOCKBACK = 420;
 const LAVA_CONTACT_INSET = 0;
+const LAVA_SWEEP_STEP_PX = TILE * 0.25;
 
 const app = express();
 const server = http.createServer(app);
@@ -1395,13 +1396,13 @@ wss.on("connection", async (ws, req) => {
     }
   };
 
-  function touchesLavaTile(p) {
+  function touchesLavaTileAtPosition(px, py) {
     const pW = PLAYER_HITBOX_SIZE;
     const pH = PLAYER_HITBOX_SIZE;
-    const contactLeft = p.x + LAVA_CONTACT_INSET;
-    const contactRight = p.x + pW - LAVA_CONTACT_INSET;
-    const contactTop = p.y + LAVA_CONTACT_INSET;
-    const contactBottom = p.y + pH - LAVA_CONTACT_INSET;
+    const contactLeft = px + LAVA_CONTACT_INSET;
+    const contactRight = px + pW - LAVA_CONTACT_INSET;
+    const contactTop = py + LAVA_CONTACT_INSET;
+    const contactBottom = py + pH - LAVA_CONTACT_INSET;
     const scanEpsilon = 0.001;
     const scanLeft = Math.max(0, Math.floor((contactLeft - scanEpsilon) / TILE));
     const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor((contactRight + scanEpsilon) / TILE));
@@ -1422,6 +1423,23 @@ wss.on("connection", async (ws, req) => {
         }
       }
     }
+    return null;
+  }
+
+  function touchesLavaTileAlongPath(fromX, fromY, toX, toY) {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const travel = Math.max(Math.abs(dx), Math.abs(dy));
+    const steps = Math.max(1, Math.ceil(travel / LAVA_SWEEP_STEP_PX));
+
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps;
+      const sampleX = fromX + dx * t;
+      const sampleY = fromY + dy * t;
+      const lavaHit = touchesLavaTileAtPosition(sampleX, sampleY);
+      if (lavaHit) return lavaHit;
+    }
+
     return null;
   }
 
@@ -1453,8 +1471,8 @@ wss.on("connection", async (ws, req) => {
     }, null, worldName);
   }
 
-  async function handleLavaContact(p) {
-    const lavaHit = touchesLavaTile(p);
+  async function handleLavaContact(p, fromX = p.x, fromY = p.y) {
+    const lavaHit = touchesLavaTileAlongPath(fromX, fromY, p.x, p.y);
     if (!lavaHit) return;
 
     const now = Date.now();
@@ -1634,6 +1652,8 @@ wss.on("connection", async (ws, req) => {
     if (msg.type === "player_move") {
       try {
         if (typeof msg.x !== "number" || typeof msg.y !== "number") return;
+        const prevX = player.x;
+        const prevY = player.y;
         player.x = msg.x;
         player.y = msg.y;
         player.facing = msg.facing === -1 ? -1 : 1;
@@ -1654,7 +1674,7 @@ wss.on("connection", async (ws, req) => {
           health: player.health,
         }, player.id, worldName);
 
-        await handleLavaContact(player);
+        await handleLavaContact(player, prevX, prevY);
       } catch (err) {
         console.error("Error in player_move:", err);
         send({ type: "error", message: "Player move failed" });
