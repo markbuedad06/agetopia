@@ -176,6 +176,16 @@ function normalizeDropPosition(x, y) {
   };
 }
 
+function getPlayerCenterTile(player) {
+  const rawX = Number(player?.x);
+  const rawY = Number(player?.y);
+  const safeX = Number.isFinite(rawX) ? rawX : 0;
+  const safeY = Number.isFinite(rawY) ? rawY : 0;
+  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor((safeX + 12) / TILE)));
+  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor((safeY + TILE * 0.5) / TILE)));
+  return { tx, ty };
+}
+
 function findStackDropInMap(dropsMap, tile, tx, ty) {
   for (const drop of dropsMap.values()) {
     if (Number(drop.tile) !== Number(tile)) continue;
@@ -2179,6 +2189,11 @@ wss.on("connection", async (ws, req) => {
         return;
       }
       if ((Number(drop.pickupLockedUntil) || 0) > Date.now()) {
+        return;
+      }
+      const playerTile = getPlayerCenterTile(player);
+      const dropTile = normalizeDropPosition(drop.x, drop.y);
+      if (dropTile.tx !== playerTile.tx || dropTile.ty !== playerTile.ty) {
         return;
       }
 
