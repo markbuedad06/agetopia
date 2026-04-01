@@ -82,6 +82,7 @@ const MANUAL_DROP_PICKUP_LOCK_MS = 900;
 const LAVA_DAMAGE = 15;
 const LAVA_COOLDOWN_MS = 900;
 const LAVA_KNOCKBACK = 420;
+const LAVA_CONTACT_INSET = 6;
 const LAVA_TILE = 16;
 
 const tileDefs = {
@@ -3154,21 +3155,24 @@ function respawnLocal() {
 function handleLavaDamage(now) {
   if (ONLINE_MODE && networkState.connected) return; // Server is authoritative in online mode
 
-  const bounds = getPlayerTileBounds();
   const pW = player.w;
   const pH = player.h;
-  const scanLeft = Math.max(0, bounds.left - 1);
-  const scanRight = Math.min(WORLD_WIDTH - 1, bounds.right + 1);
-  const scanTop = Math.max(0, bounds.top - 1);
-  const scanBottom = Math.min(WORLD_HEIGHT - 1, bounds.bottom + 1);
+  const contactLeft = player.x + LAVA_CONTACT_INSET;
+  const contactRight = player.x + pW - LAVA_CONTACT_INSET;
+  const contactTop = player.y + LAVA_CONTACT_INSET;
+  const contactBottom = player.y + pH - LAVA_CONTACT_INSET;
+  const scanLeft = Math.max(0, Math.floor(contactLeft / TILE));
+  const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor((contactRight - 1) / TILE));
+  const scanTop = Math.max(0, Math.floor(contactTop / TILE));
+  const scanBottom = Math.min(WORLD_HEIGHT - 1, Math.floor((contactBottom - 1) / TILE));
   let lavaHit = null;
   for (let ty = scanTop; ty <= scanBottom; ty += 1) {
     for (let tx = scanLeft; tx <= scanRight; tx += 1) {
       if (getTile(tx, ty) !== LAVA_TILE) continue;
       const tileX = tx * TILE;
       const tileY = ty * TILE;
-      const xOverlap = (player.x + pW) >= tileX && player.x <= tileX + TILE;
-      const yOverlap = (player.y + pH) >= tileY && player.y <= tileY + TILE;
+      const xOverlap = contactRight > tileX && contactLeft < tileX + TILE;
+      const yOverlap = contactBottom > tileY && contactTop < tileY + TILE;
       if (xOverlap && yOverlap) {
         lavaHit = { tx, ty };
         break;
