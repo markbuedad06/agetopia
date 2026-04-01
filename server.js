@@ -155,6 +155,37 @@ function getWorldDrops(worldName) {
   return worldDrops.get(worldName);
 }
 
+function normalizeDropCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function normalizeDropPosition(x, y) {
+  const rawX = Number(x);
+  const rawY = Number(y);
+  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor(rawX / TILE)));
+  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor(rawY / TILE)));
+  return {
+    tx,
+    ty,
+    x: tx * TILE + TILE * 0.5,
+    y: ty * TILE + TILE * 0.5,
+  };
+}
+
+function findStackDropInMap(dropsMap, tile, tx, ty) {
+  for (const drop of dropsMap.values()) {
+    if (Number(drop.tile) !== Number(tile)) continue;
+    const dropTx = Math.floor(Number(drop.x) / TILE);
+    const dropTy = Math.floor(Number(drop.y) / TILE);
+    if (dropTx === tx && dropTy === ty) {
+      return drop;
+    }
+  }
+  return null;
+}
+
 async function ensureDropsLoaded(worldName) {
   if (worldDropsLoaded.has(worldName)) return;
   const rows = await dropsDB.find({ worldName });
@@ -169,6 +200,7 @@ async function ensureDropsLoaded(worldName) {
       vy: Number(row.vy) || 0,
       floatY: Number(row.floatY) || 0,
       floatTime: Number(row.floatTime) || 0,
+      count: normalizeDropCount(row.itemCount),
     });
   }
   worldDropsLoaded.add(worldName);
@@ -261,9 +293,18 @@ async function ensureSchema() {
     vy FLOAT NOT NULL,
     floatY FLOAT NOT NULL,
     floatTime FLOAT NOT NULL,
+    itemCount INT NOT NULL DEFAULT 1,
     updatedAt DATETIME NOT NULL,
     INDEX drop_world_idx (worldName)
   )`);
+
+  try {
+    await pool.query("ALTER TABLE world_drops ADD COLUMN itemCount INT NOT NULL DEFAULT 1");
+  } catch (err) {
+    if (!err || err.code !== "ER_DUP_FIELDNAME") {
+      throw err;
+    }
+  }
 
   await pool.query(`CREATE TABLE IF NOT EXISTS friend_pairs (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -579,7 +620,7 @@ function makeDropsRepo() {
     find: async (query = {}) => {
       if (!query.worldName) return [];
       const [rows] = await pool.query(
-        "SELECT id, worldName, tile, x, y, vx, vy, floatY, floatTime FROM world_drops WHERE worldName = ?",
+        "SELECT id, worldName, tile, x, y, vx, vy, floatY, floatTime, itemCount FROM world_drops WHERE worldName = ?",
         [query.worldName]
       );
       return rows;
@@ -588,8 +629,8 @@ function makeDropsRepo() {
       const id = filter.id || doc.id;
       if (!id) return;
       await pool.query(
-        "INSERT INTO world_drops (id, worldName, tile, x, y, vx, vy, floatY, floatTime, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), tile=VALUES(tile), x=VALUES(x), y=VALUES(y), vx=VALUES(vx), vy=VALUES(vy), floatY=VALUES(floatY), floatTime=VALUES(floatTime), updatedAt=VALUES(updatedAt)",
-        [id, doc.worldName, doc.tile, doc.x, doc.y, doc.vx, doc.vy, doc.floatY, doc.floatTime, doc.updatedAt || formatDateForMySQL()]
+        "INSERT INTO world_drops (id, worldName, tile, x, y, vx, vy, floatY, floatTime, itemCount, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE worldName=VALUES(worldName), tile=VALUES(tile), x=VALUES(x), y=VALUES(y), vx=VALUES(vx), vy=VALUES(vy), floatY=VALUES(floatY), floatTime=VALUES(floatTime), itemCount=VALUES(itemCount), updatedAt=VALUES(updatedAt)",
+        [id, doc.worldName, doc.tile, doc.x, doc.y, doc.vx, doc.vy, doc.floatY, doc.floatTime, normalizeDropCount(doc.count), doc.updatedAt || formatDateForMySQL()]
       );
     },
     remove: async (filter) => {
@@ -2080,31 +2121,70 @@ wss.on("connection", async (ws, req) => {
 
     if (msg.type === "drop_spawn") {
       await ensureDropsLoaded(worldName);
-      const { id, tile, x, y, vx, vy, floatY, floatTime } = msg;
+      const { id, tile, x, y, count, floatTime } = msg;
+      const tileId = Number(tile);
+      if (!Number.isFinite(tileId)) {
+        return;
+      }
+      const amount = normalizeDropCount(count);
+      const pos = normalizeDropPosition(x, y);
+      const dropsMap = getWorldDrops(worldName);
+      const stacked = findStackDropInMap(dropsMap, tileId, pos.tx, pos.ty);
+
+      if (stacked) {
+        stacked.count = normalizeDropCount(stacked.count) + amount;
+        stacked.x = pos.x;
+        stacked.y = pos.y;
+        stacked.vx = 0;
+        stacked.vy = 0;
+        stacked.floatY = pos.y;
+        stacked.floatTime = Number(stacked.floatTime) || 0;
+        await dropsDB.update({ id: stacked.id }, { id: stacked.id, worldName, ...stacked, updatedAt: formatDateForMySQL() }, { upsert: true });
+        broadcast({ type: "drop_spawn", drop: stacked }, null, worldName);
+        return;
+      }
+
       const dropId = String(id || randomUUID());
       const drop = {
         id: dropId,
-        tile: Number(tile),
-        x: Number(x),
-        y: Number(y),
-        vx: Number(vx) || 0,
-        vy: Number(vy) || 0,
-        floatY: Number(floatY) || Number(y) || 0,
+        tile: tileId,
+        x: pos.x,
+        y: pos.y,
+        vx: 0,
+        vy: 0,
+        floatY: pos.y,
         floatTime: Number(floatTime) || 0,
+        count: amount,
       };
-      const dropsMap = getWorldDrops(worldName);
       dropsMap.set(dropId, drop);
       await dropsDB.update({ id: dropId }, { id: dropId, worldName, ...drop, updatedAt: formatDateForMySQL() }, { upsert: true });
       broadcast({ type: "drop_spawn", drop }, null, worldName);
+      return;
     }
 
     if (msg.type === "drop_collect") {
       await ensureDropsLoaded(worldName);
       const dropId = String(msg.id || "");
       const dropsMap = getWorldDrops(worldName);
-      dropsMap.delete(dropId);
-      await dropsDB.remove({ id: dropId });
-      broadcast({ type: "drop_collect", id: dropId }, null, worldName);
+      const drop = dropsMap.get(dropId);
+      if (!drop) {
+        return;
+      }
+
+      const amount = normalizeDropCount(msg.amount);
+      const remaining = normalizeDropCount(drop.count) - amount;
+      if (remaining <= 0) {
+        dropsMap.delete(dropId);
+        await dropsDB.remove({ id: dropId });
+        broadcast({ type: "drop_collect", id: dropId }, null, worldName);
+        return;
+      }
+
+      drop.count = remaining;
+      dropsMap.set(dropId, drop);
+      await dropsDB.update({ id: dropId }, { id: dropId, worldName, ...drop, updatedAt: formatDateForMySQL() }, { upsert: true });
+      broadcast({ type: "drop_spawn", drop }, null, worldName);
+      return;
     }
   });
 
