@@ -1934,8 +1934,8 @@ function drawPlayerSprite(worldX, worldY, direction, isMoving) {
     ? Math.floor((currentNow / 1000) * PLAYER_SPRITE_FPS) % PLAYER_SPRITE_FRAMES
     : 0;
   const sx = frame * PLAYER_SPRITE_FRAME_SIZE;
-  const drawW = player.h;
-  const drawH = player.h;
+  const drawW = TILE;
+  const drawH = TILE;
   const drawX = px + Math.floor((player.w - drawW) * 0.5);
   const drawY = py + (player.h - drawH);
 
