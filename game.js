@@ -181,8 +181,10 @@ function normalizeDropCount(value) {
 function normalizeDropPosition(x, y) {
   const rawX = Number(x);
   const rawY = Number(y);
-  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor(rawX / TILE)));
-  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor(rawY / TILE)));
+  const safeX = Number.isFinite(rawX) ? rawX : 0;
+  const safeY = Number.isFinite(rawY) ? rawY : 0;
+  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor(safeX / TILE)));
+  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor(safeY / TILE)));
   return {
     tx,
     ty,
@@ -3039,7 +3041,7 @@ function drawDrops() {
   for (const drop of drops.values()) {
     const px = drop.x - camera.x;
     const py = drop.y - camera.y;
-    const bobOffset = Math.sin(drop.floatTime * 3) * 3;
+    const bobOffset = Math.sin(drop.floatTime * 3) * Math.max(1, Math.min(6, DROP_FLOAT_SPEED / 20));
     
     // Use itemDefs to get color (handles both blocks and seeds)
     const def = itemDefs[drop.tile] || tileDefs[drop.tile];
