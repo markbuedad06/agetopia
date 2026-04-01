@@ -1830,10 +1830,10 @@ function performDrop(requestedAmount) {
   }
 
   const facing = player.facing || 1;
-  const baseX = player.x + player.w * 0.5 + facing * (TILE + 20); // one tile further out
+  const baseX = player.x + player.w * 0.5 + facing * MANUAL_DROP_FORWARD_OFFSET;
   const baseY = player.y + player.h * 0.7;
 
-  spawnDropStack(selectedInventoryTile, baseX, baseY, amount);
+  spawnDropStack(selectedInventoryTile, baseX, baseY, amount, { pickupDelayMs: MANUAL_DROP_PICKUP_LOCK_MS });
 
   inventory[selectedInventoryTile] = available - amount;
   saveInventoryItems();
