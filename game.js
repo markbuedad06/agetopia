@@ -84,6 +84,7 @@ const LAVA_DAMAGE = 15;
 const LAVA_COOLDOWN_MS = 900;
 const LAVA_KNOCKBACK = 420;
 const LAVA_CONTACT_INSET = 0;
+const LAVA_TOUCH_TOLERANCE = 1;
 const LAVA_SWEEP_STEP_PX = TILE * 0.25;
 const LAVA_TILE = 16;
 
@@ -3160,18 +3161,23 @@ function findLavaTouchAtPosition(px, py, pW, pH) {
   const contactTop = py + LAVA_CONTACT_INSET;
   const contactBottom = py + pH - LAVA_CONTACT_INSET;
   const scanEpsilon = 0.001;
-  const scanLeft = Math.max(0, Math.floor((contactLeft - scanEpsilon) / TILE));
-  const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor((contactRight + scanEpsilon) / TILE));
-  const scanTop = Math.max(0, Math.floor((contactTop - scanEpsilon) / TILE));
-  const scanBottom = Math.min(WORLD_HEIGHT - 1, Math.floor((contactBottom + scanEpsilon) / TILE));
+  const scanPadding = LAVA_TOUCH_TOLERANCE + scanEpsilon;
+  const scanLeft = Math.max(0, Math.floor((contactLeft - scanPadding) / TILE));
+  const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor((contactRight + scanPadding) / TILE));
+  const scanTop = Math.max(0, Math.floor((contactTop - scanPadding) / TILE));
+  const scanBottom = Math.min(WORLD_HEIGHT - 1, Math.floor((contactBottom + scanPadding) / TILE));
+  const overlapLeft = contactLeft - LAVA_TOUCH_TOLERANCE;
+  const overlapRight = contactRight + LAVA_TOUCH_TOLERANCE;
+  const overlapTop = contactTop - LAVA_TOUCH_TOLERANCE;
+  const overlapBottom = contactBottom + LAVA_TOUCH_TOLERANCE;
 
   for (let ty = scanTop; ty <= scanBottom; ty += 1) {
     for (let tx = scanLeft; tx <= scanRight; tx += 1) {
       if (getTile(tx, ty) !== LAVA_TILE) continue;
       const tileX = tx * TILE;
       const tileY = ty * TILE;
-      const xOverlap = contactRight >= tileX && contactLeft <= tileX + TILE;
-      const yOverlap = contactBottom >= tileY && contactTop <= tileY + TILE;
+      const xOverlap = overlapRight >= tileX && overlapLeft <= tileX + TILE;
+      const yOverlap = overlapBottom >= tileY && overlapTop <= tileY + TILE;
       if (xOverlap && yOverlap) {
         return { tx, ty };
       }
