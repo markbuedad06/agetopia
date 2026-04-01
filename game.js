@@ -172,6 +172,100 @@ function makeDropId() {
   return `${networkState.userId || "local"}-${nextDropId++}`;
 }
 
+function normalizeDropCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function normalizeDropPosition(x, y) {
+  const rawX = Number(x);
+  const rawY = Number(y);
+  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor(rawX / TILE)));
+  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor(rawY / TILE)));
+  return {
+    tx,
+    ty,
+    x: tx * TILE + TILE / 2,
+    y: ty * TILE + TILE / 2,
+  };
+}
+
+function normalizeDropRecord(rawDrop) {
+  if (!rawDrop || rawDrop.id == null) return null;
+  const tile = Number(rawDrop.tile);
+  if (!Number.isFinite(tile)) return null;
+  const pos = normalizeDropPosition(rawDrop.x, rawDrop.y);
+  return {
+    id: String(rawDrop.id),
+    tile,
+    x: pos.x,
+    y: pos.y,
+    vx: 0,
+    vy: 0,
+    floatY: pos.y,
+    floatTime: Number(rawDrop.floatTime) || 0,
+    count: normalizeDropCount(rawDrop.count),
+  };
+}
+
+function findStackDrop(tile, tx, ty) {
+  for (const drop of drops.values()) {
+    if (Number(drop.tile) !== Number(tile)) continue;
+    const dropTx = Math.floor(Number(drop.x) / TILE);
+    const dropTy = Math.floor(Number(drop.y) / TILE);
+    if (dropTx === tx && dropTy === ty) {
+      return drop;
+    }
+  }
+  return null;
+}
+
+function spawnDropStack(tile, x, y, count = 1) {
+  const itemId = Number(tile);
+  if (!Number.isFinite(itemId)) return;
+  const amount = normalizeDropCount(count);
+  const pos = normalizeDropPosition(x, y);
+
+  if (ONLINE_MODE && networkState.connected) {
+    sendSocket({
+      type: "drop_spawn",
+      tile: itemId,
+      x: pos.x,
+      y: pos.y,
+      count: amount,
+      vx: 0,
+      vy: 0,
+      floatY: pos.y,
+      floatTime: 0,
+    });
+    return;
+  }
+
+  const existing = findStackDrop(itemId, pos.tx, pos.ty);
+  if (existing) {
+    existing.count = normalizeDropCount(existing.count) + amount;
+    existing.x = pos.x;
+    existing.y = pos.y;
+    existing.floatY = pos.y;
+    existing.floatTime = 0;
+    existing.vx = 0;
+    existing.vy = 0;
+    return;
+  }
+
+  const drop = normalizeDropRecord({
+    id: makeDropId(),
+    tile: itemId,
+    x: pos.x,
+    y: pos.y,
+    count: amount,
+    floatTime: 0,
+  });
+  if (!drop) return;
+  drops.set(drop.id, drop);
+}
+
 // Check if a position is within a locked area (and not owned by current player)
 function isPositionLocked(x, y) {
   for (const lock of lockedAreas) {
@@ -1511,47 +1605,14 @@ function tryBreak(dt) {
         const dropY = ty * TILE + TILE / 2;
         const sourceBlock = plant.sourceBlock;
         const dropCount = plant.dropCount;
-        
-        // Drop all the blocks with a very small spread
-        for (let i = 0; i < dropCount; i++) {
-          const dropId = makeDropId();
-          const angle = (i / dropCount) * Math.PI * 2;
-          const spread = 3; // tighter radial spawn distance
-          const speed = 60; // lower launch speed for minimal explosion
-          const drop = {
-            id: dropId,
-            tile: sourceBlock,
-            x: dropX + Math.cos(angle) * spread,
-            y: dropY + Math.sin(angle) * spread,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed - speed,
-            floatY: dropY,
-            floatTime: 0,
-          };
-          drops.set(dropId, drop);
-          if (ONLINE_MODE && networkState.connected) {
-            sendSocket({ type: "drop_spawn", ...drop });
-          }
-        }
+
+        // Keep drops anchored to the broken tile and stack same items.
+        spawnDropStack(sourceBlock, dropX, dropY, dropCount);
         
         // Low chance to also drop 1 seed
         if (Math.random() < 0.25) {
           const seedItem = 8 + sourceBlock;
-          const dropId = makeDropId();
-          const drop = {
-            id: dropId,
-            tile: seedItem,
-            x: dropX,
-            y: dropY,
-            vx: (Math.random() - 0.5) * 120,
-            vy: -90,
-            floatY: dropY,
-            floatTime: 0,
-          };
-          drops.set(dropId, drop);
-          if (ONLINE_MODE && networkState.connected) {
-            sendSocket({ type: "drop_spawn", ...drop });
-          }
+          spawnDropStack(seedItem, dropX, dropY, 1);
         }
       } else {
         // Break growing tree - low chance for seeds or nothing
@@ -1561,17 +1622,7 @@ function tryBreak(dt) {
         // 30% chance to drop a seed, 70% chance for nothing
         if (Math.random() < 0.3) {
           const seedItem = 8 + plant.sourceBlock; // Convert block to seed
-          const dropId = nextDropId++;
-          drops.set(dropId, {
-            id: dropId,
-            tile: seedItem,
-            x: dropX,
-            y: dropY,
-            vx: (Math.random() - 0.5) * 120,
-            vy: -90,
-            floatY: dropY,
-            floatTime: 0,
-          });
+          spawnDropStack(seedItem, dropX, dropY, 1);
         }
       }
       
@@ -1592,21 +1643,7 @@ function tryBreak(dt) {
         // Create drop if something drops
         const dropX = tx * TILE + TILE / 2;
         const dropY = ty * TILE + TILE / 2;
-        const dropId = makeDropId();
-        const drop = {
-          id: dropId,
-          tile: dropItem,
-          x: dropX,
-          y: dropY,
-          vx: (Math.random() - 0.5) * 100,
-          vy: -80,
-          floatY: dropY,
-          floatTime: 0,
-        };
-        drops.set(dropId, drop);
-        if (ONLINE_MODE && networkState.connected) {
-          sendSocket({ type: "drop_spawn", ...drop });
-        }
+        spawnDropStack(dropItem, dropX, dropY, 1);
       }
     }
     
@@ -1782,23 +1819,7 @@ function performDrop(requestedAmount) {
   const baseX = player.x + player.w * 0.5 + facing * (TILE + 20); // one tile further out
   const baseY = player.y + player.h * 0.7;
 
-  for (let i = 0; i < amount; i++) {
-    const dropId = makeDropId();
-    const drop = {
-      id: dropId,
-      tile: selectedInventoryTile,
-      x: baseX + (Math.random() - 0.5) * 6,
-      y: baseY + (Math.random() - 0.5) * 6,
-      vx: facing * 80 + (Math.random() - 0.5) * 40,
-      vy: -80 + (Math.random() - 0.5) * 30,
-      floatY: baseY,
-      floatTime: 0,
-    };
-    drops.set(dropId, drop);
-    if (ONLINE_MODE && networkState.connected) {
-      sendSocket({ type: "drop_spawn", ...drop });
-    }
-  }
+  spawnDropStack(selectedInventoryTile, baseX, baseY, amount);
 
   inventory[selectedInventoryTile] = available - amount;
   saveInventoryItems();
@@ -2426,7 +2447,10 @@ function connectSocket(token) {
       drops.clear();
       if (Array.isArray(msg.drops)) {
         msg.drops.forEach((d) => {
-          drops.set(d.id, { ...d });
+          const normalizedDrop = normalizeDropRecord(d);
+          if (normalizedDrop) {
+            drops.set(normalizedDrop.id, normalizedDrop);
+          }
         });
       }
       remotePlayers.clear();
@@ -2651,7 +2675,10 @@ function connectSocket(token) {
       drops.clear();
       if (Array.isArray(msg.drops)) {
         msg.drops.forEach((d) => {
-          drops.set(d.id, { ...d });
+          const normalizedDrop = normalizeDropRecord(d);
+          if (normalizedDrop) {
+            drops.set(normalizedDrop.id, normalizedDrop);
+          }
         });
       }
       return;
@@ -2660,7 +2687,10 @@ function connectSocket(token) {
     if (msg.type === "drop_spawn") {
       const d = msg.drop;
       if (d && d.id != null) {
-        drops.set(d.id, { ...d });
+        const normalizedDrop = normalizeDropRecord(d);
+        if (normalizedDrop) {
+          drops.set(normalizedDrop.id, normalizedDrop);
+        }
       }
       return;
     }
@@ -2935,24 +2965,14 @@ function updatePlants(dt) {
 
 function updateDrops(dt) {
   for (const [dropId, drop] of drops.entries()) {
-    drop.vy += 1200 * dt;
-    drop.vy = Math.min(drop.vy, 300);
-    
-    drop.y += drop.vy * dt;
-    drop.x += drop.vx * dt;
+    const anchored = normalizeDropPosition(drop.x, drop.y);
+    drop.x = anchored.x;
+    drop.y = anchored.y;
+    drop.floatY = anchored.y;
+    drop.vx = 0;
+    drop.vy = 0;
 
-    // Prevent drops from passing through solid tiles
-    const halfSize = 10;
-    const tileBelowX = Math.floor(drop.x / TILE);
-    const tileBelowY = Math.floor((drop.y + halfSize) / TILE);
-    if (isSolid(getTile(tileBelowX, tileBelowY))) {
-      drop.y = tileBelowY * TILE - halfSize;
-      drop.vy = 0;
-      drop.vx *= 0.5;
-    }
-    
     drop.floatTime += dt;
-    const floatPhase = Math.sin(drop.floatTime * 3) * DROP_FLOAT_SPEED;
     
     const playerCenter = player.x + player.w * 0.5;
     const playerCenterY = player.y + player.h * 0.5;
@@ -2961,18 +2981,28 @@ function updateDrops(dt) {
     const dist = Math.hypot(dx, dy);
     
     if (dist < DROP_PICKUP_RANGE) {
-      pickupDrop(drop);
-      drops.delete(dropId);
+      const consumed = pickupDrop(drop);
+      if (consumed) {
+        drops.delete(dropId);
+      }
     }
   }
 }
 
 function pickupDrop(drop) {
   const itemId = drop.tile;
+  const dropCount = normalizeDropCount(drop.count);
   if (!inventory[itemId]) {
     inventory[itemId] = 0;
   }
-  inventory[itemId] = Math.min(INVENTORY_STACK_LIMIT, inventory[itemId] + 1);
+  const currentAmount = inventory[itemId];
+  const freeSpace = INVENTORY_STACK_LIMIT - currentAmount;
+  if (freeSpace <= 0) {
+    return false;
+  }
+  const collected = Math.min(freeSpace, dropCount);
+  inventory[itemId] = currentAmount + collected;
+  drop.count = dropCount - collected;
   
   // For seeds and blocks, move them to quick slots (first 5) if they're not already there
   const isSeed = (itemId >= 9 && itemId <= 14) || itemId === 17;
@@ -2995,13 +3025,14 @@ function pickupDrop(drop) {
   
   saveInventoryItems();
   if (ONLINE_MODE && networkState.connected) {
-    sendSocket({ type: "drop_collect", id: drop.id });
+    sendSocket({ type: "drop_collect", id: drop.id, amount: collected });
   }
   
   // Get item name from itemDefs (handles both blocks and seeds)
   const itemDef = itemDefs[itemId];
   const itemName = itemDef ? itemDef.name : "Unknown Item";
-  setAuthMessage(`+1 ${itemName}`);
+  setAuthMessage(`+${collected} ${itemName}`);
+  return drop.count <= 0;
 }
 
 function drawDrops() {
@@ -3058,6 +3089,20 @@ function drawDrops() {
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
       ctx.lineWidth = 1;
       ctx.strokeRect(px - size / 2, py - size / 2 + bobOffset, size, size);
+    }
+
+    const stackCount = normalizeDropCount(drop.count);
+    if (stackCount > 1) {
+      const labelX = px + 12;
+      const labelY = py + 12 + bobOffset;
+      ctx.font = "bold 12px 'Segoe UI', sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,0.7)";
+      ctx.strokeText(`x${stackCount}`, labelX, labelY);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(`x${stackCount}`, labelX, labelY);
     }
     
     ctx.restore();
