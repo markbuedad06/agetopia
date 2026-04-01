@@ -200,6 +200,7 @@ function normalizeDropRecord(rawDrop) {
   const tile = Number(rawDrop.tile);
   if (!Number.isFinite(tile)) return null;
   const pos = normalizeDropPosition(rawDrop.x, rawDrop.y);
+  const pickupLockedUntilRaw = Number(rawDrop.pickupLockedUntil);
   return {
     id: String(rawDrop.id),
     tile,
@@ -210,6 +211,7 @@ function normalizeDropRecord(rawDrop) {
     floatY: pos.y,
     floatTime: Number(rawDrop.floatTime) || 0,
     count: normalizeDropCount(rawDrop.count),
+    pickupLockedUntil: Number.isFinite(pickupLockedUntilRaw) ? Math.max(0, pickupLockedUntilRaw) : 0,
   };
 }
 
