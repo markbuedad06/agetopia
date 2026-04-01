@@ -40,6 +40,7 @@ const LAVA_TILE = 16;
 const LAVA_DAMAGE = 15;
 const LAVA_COOLDOWN_MS = 900;
 const LAVA_KNOCKBACK = 420;
+const LAVA_CONTACT_INSET = 6;
 
 const app = express();
 const server = http.createServer(app);
@@ -1396,20 +1397,25 @@ wss.on("connection", async (ws, req) => {
   function touchesLavaTile(p) {
     const pW = 24;
     const pH = 32;
-    const left = Math.floor(p.x / TILE);
-    const right = Math.floor((p.x + pW) / TILE);
-    const top = Math.floor(p.y / TILE);
-    const bottom = Math.floor((p.y + pH) / TILE);
-    const scanLeft = Math.max(0, left - 1);
-    const scanRight = Math.min(WORLD_WIDTH - 1, right + 1);
-    const scanTop = Math.max(0, top - 1);
-    const scanBottom = Math.min(WORLD_HEIGHT - 1, bottom + 1);
+    const contactLeft = p.x + LAVA_CONTACT_INSET;
+    const contactRight = p.x + pW - LAVA_CONTACT_INSET;
+    const contactTop = p.y + LAVA_CONTACT_INSET;
+    const contactBottom = p.y + pH - LAVA_CONTACT_INSET;
+    const scanLeft = Math.max(0, Math.floor(contactLeft / TILE));
+    const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor((contactRight - 1) / TILE));
+    const scanTop = Math.max(0, Math.floor(contactTop / TILE));
+    const scanBottom = Math.min(WORLD_HEIGHT - 1, Math.floor((contactBottom - 1) / TILE));
     const worldArr = getOrCreateWorldArray(worldName);
 
     for (let ty = scanTop; ty <= scanBottom; ty += 1) {
       for (let tx = scanLeft; tx <= scanRight; tx += 1) {
         if (!inBounds(tx, ty)) continue;
-        if (worldArr[indexOf(tx, ty)] === LAVA_TILE) {
+        if (worldArr[indexOf(tx, ty)] !== LAVA_TILE) continue;
+        const tileX = tx * TILE;
+        const tileY = ty * TILE;
+        const xOverlap = contactRight > tileX && contactLeft < tileX + TILE;
+        const yOverlap = contactBottom > tileY && contactTop < tileY + TILE;
+        if (xOverlap && yOverlap) {
           return { tx, ty };
         }
       }
