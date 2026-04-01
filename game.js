@@ -71,7 +71,6 @@ const PUNCH_ANIM_MS = 180;
 const DIGIT_COMBO_TIMEOUT_MS = 1600;
 const KNOCKBACK_PUSH = 360;
 const KNOCKBACK_LIFT = 240;
-const DROP_PICKUP_RANGE = 40;
 const DROP_FLOAT_SPEED = 80;
 const MANUAL_DROP_FORWARD_OFFSET = TILE + 8;
 const MANUAL_DROP_PICKUP_LOCK_MS = 900;
@@ -2979,6 +2978,8 @@ function updatePlants(dt) {
 
 function updateDrops(dt) {
   const now = Date.now();
+  const playerTx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor((player.x + player.w * 0.5) / TILE)));
+  const playerTy = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor((player.y + player.h * 0.5) / TILE)));
   for (const [dropId, drop] of drops.entries()) {
     const anchored = normalizeDropPosition(drop.x, drop.y);
     drop.x = anchored.x;
@@ -2988,19 +2989,15 @@ function updateDrops(dt) {
     drop.vy = 0;
 
     drop.floatTime += dt;
-    
-    const playerCenter = player.x + player.w * 0.5;
-    const playerCenterY = player.y + player.h * 0.5;
-    const dx = drop.x - playerCenter;
-    const dy = drop.y - playerCenterY;
-    const dist = Math.hypot(dx, dy);
+    const dropTx = anchored.tx;
+    const dropTy = anchored.ty;
 
     const pickupLockedUntil = Number(drop.pickupLockedUntil) || 0;
     if (now < pickupLockedUntil) {
       continue;
     }
-    
-    if (dist < DROP_PICKUP_RANGE) {
+
+    if (dropTx === playerTx && dropTy === playerTy) {
       const consumed = pickupDrop(drop);
       if (consumed) {
         drops.delete(dropId);
