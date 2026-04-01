@@ -84,6 +84,7 @@ const LAVA_DAMAGE = 15;
 const LAVA_COOLDOWN_MS = 900;
 const LAVA_KNOCKBACK = 420;
 const LAVA_CONTACT_INSET = 0;
+const LAVA_SWEEP_STEP_PX = TILE * 0.25;
 const LAVA_TILE = 16;
 
 const tileDefs = {
@@ -3153,21 +3154,17 @@ function respawnLocal() {
   setAuthMessage("Respawned at spawn.");
 }
 
-function handleLavaDamage(now) {
-  if (ONLINE_MODE && networkState.connected) return; // Server is authoritative in online mode
-
-  const pW = player.w;
-  const pH = player.h;
-  const contactLeft = player.x + LAVA_CONTACT_INSET;
-  const contactRight = player.x + pW - LAVA_CONTACT_INSET;
-  const contactTop = player.y + LAVA_CONTACT_INSET;
-  const contactBottom = player.y + pH - LAVA_CONTACT_INSET;
+function findLavaTouchAtPosition(px, py, pW, pH) {
+  const contactLeft = px + LAVA_CONTACT_INSET;
+  const contactRight = px + pW - LAVA_CONTACT_INSET;
+  const contactTop = py + LAVA_CONTACT_INSET;
+  const contactBottom = py + pH - LAVA_CONTACT_INSET;
   const scanEpsilon = 0.001;
   const scanLeft = Math.max(0, Math.floor((contactLeft - scanEpsilon) / TILE));
   const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor((contactRight + scanEpsilon) / TILE));
   const scanTop = Math.max(0, Math.floor((contactTop - scanEpsilon) / TILE));
   const scanBottom = Math.min(WORLD_HEIGHT - 1, Math.floor((contactBottom + scanEpsilon) / TILE));
-  let lavaHit = null;
+
   for (let ty = scanTop; ty <= scanBottom; ty += 1) {
     for (let tx = scanLeft; tx <= scanRight; tx += 1) {
       if (getTile(tx, ty) !== LAVA_TILE) continue;
@@ -3176,12 +3173,33 @@ function handleLavaDamage(now) {
       const xOverlap = contactRight >= tileX && contactLeft <= tileX + TILE;
       const yOverlap = contactBottom >= tileY && contactTop <= tileY + TILE;
       if (xOverlap && yOverlap) {
-        lavaHit = { tx, ty };
-        break;
+        return { tx, ty };
       }
     }
-    if (lavaHit) break;
   }
+  return null;
+}
+
+function findLavaTouchAlongPath(fromX, fromY, toX, toY, pW, pH) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const travel = Math.max(Math.abs(dx), Math.abs(dy));
+  const steps = Math.max(1, Math.ceil(travel / LAVA_SWEEP_STEP_PX));
+
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const sampleX = fromX + dx * t;
+    const sampleY = fromY + dy * t;
+    const lavaHit = findLavaTouchAtPosition(sampleX, sampleY, pW, pH);
+    if (lavaHit) return lavaHit;
+  }
+  return null;
+}
+
+function handleLavaDamage(now, fromX = player.x, fromY = player.y) {
+  if (ONLINE_MODE && networkState.connected) return; // Server is authoritative in online mode
+
+  const lavaHit = findLavaTouchAlongPath(fromX, fromY, player.x, player.y, player.w, player.h);
 
   if (!lavaHit) return;
   if (player.lastLavaHitAt && now - player.lastLavaHitAt < LAVA_COOLDOWN_MS) return;
@@ -3259,8 +3277,10 @@ function update(dt, now) {
   player.vy += GRAVITY * dt;
   if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
 
+  const prevX = player.x;
+  const prevY = player.y;
   moveWithCollisions(dt);
-  handleLavaDamage(now);
+  handleLavaDamage(now, prevX, prevY);
   tryBreak(dt);
   tryPlace();
   updateDrops(dt);
