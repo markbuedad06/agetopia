@@ -3163,9 +3163,9 @@ function handleLavaDamage(now) {
   const contactTop = player.y + LAVA_CONTACT_INSET;
   const contactBottom = player.y + pH - LAVA_CONTACT_INSET;
   const scanLeft = Math.max(0, Math.floor(contactLeft / TILE));
-  const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor((contactRight - 1) / TILE));
+  const scanRight = Math.min(WORLD_WIDTH - 1, Math.floor(contactRight / TILE));
   const scanTop = Math.max(0, Math.floor(contactTop / TILE));
-  const scanBottom = Math.min(WORLD_HEIGHT - 1, Math.floor((contactBottom - 1) / TILE));
+  const scanBottom = Math.min(WORLD_HEIGHT - 1, Math.floor(contactBottom / TILE));
   let lavaHit = null;
   for (let ty = scanTop; ty <= scanBottom; ty += 1) {
     for (let tx = scanLeft; tx <= scanRight; tx += 1) {
