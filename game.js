@@ -59,9 +59,9 @@ const INVENTORY_STATE_KEY = "agetopia_inventory_open";
 const INVENTORY_ITEMS_KEY = "agetopia_inventory_items";
 const LAST_USERNAME_KEY = "agetopia_last_username";
 const GROWING_PLANTS_KEY = "agetopia_growing_plants";
-const RENDER_SCALE_LOW = 0.65;
-const RENDER_SCALE_MEDIUM = 0.8;
-const RENDER_SCALE_HIGH = 0.95;
+const RENDER_SCALE_LOW = 0.55;
+const RENDER_SCALE_MEDIUM = 0.7;
+const RENDER_SCALE_HIGH = 0.85;
 const RENDER_SCALE_OPTIONS = [RENDER_SCALE_LOW, RENDER_SCALE_MEDIUM, RENDER_SCALE_HIGH];
 const INVENTORY_STACK_LIMIT = 99;
 const MAX_HEALTH = 100;
@@ -211,7 +211,10 @@ function normalizeRenderScale(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return RENDER_SCALE_MEDIUM;
 
-  // Migrate older saved presets to the new more zoomed-in options.
+  // Migrate older saved presets to the current options.
+  if (Math.abs(parsed - 0.65) < 0.001) return RENDER_SCALE_LOW;
+  if (Math.abs(parsed - 0.8) < 0.001) return RENDER_SCALE_MEDIUM;
+  if (Math.abs(parsed - 0.95) < 0.001) return RENDER_SCALE_HIGH;
   if (Math.abs(parsed - 0.75) < 0.001) return RENDER_SCALE_LOW;
   if (Math.abs(parsed - 1) < 0.001) return RENDER_SCALE_MEDIUM;
   if (Math.abs(parsed - 1.25) < 0.001) return RENDER_SCALE_HIGH;
