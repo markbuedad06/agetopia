@@ -164,8 +164,10 @@ function normalizeDropCount(value) {
 function normalizeDropPosition(x, y) {
   const rawX = Number(x);
   const rawY = Number(y);
-  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor(rawX / TILE)));
-  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor(rawY / TILE)));
+  const safeX = Number.isFinite(rawX) ? rawX : 0;
+  const safeY = Number.isFinite(rawY) ? rawY : 0;
+  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor(safeX / TILE)));
+  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor(safeY / TILE)));
   return {
     tx,
     ty,
@@ -2123,7 +2125,7 @@ wss.on("connection", async (ws, req) => {
       await ensureDropsLoaded(worldName);
       const { id, tile, x, y, count, floatTime } = msg;
       const tileId = Number(tile);
-      if (!Number.isFinite(tileId)) {
+      if (!Number.isInteger(tileId)) {
         return;
       }
       const amount = normalizeDropCount(count);
