@@ -2131,6 +2131,9 @@ wss.on("connection", async (ws, req) => {
       }
       const amount = normalizeDropCount(count);
       const pos = normalizeDropPosition(x, y);
+      const pickupDelayRaw = Number(msg.pickupDelayMs);
+      const pickupDelayMs = Number.isFinite(pickupDelayRaw) ? Math.max(0, Math.min(5000, Math.floor(pickupDelayRaw))) : 0;
+      const pickupLockedUntil = pickupDelayMs > 0 ? Date.now() + pickupDelayMs : 0;
       const dropsMap = getWorldDrops(worldName);
       const stacked = findStackDropInMap(dropsMap, tileId, pos.tx, pos.ty);
 
@@ -2142,6 +2145,7 @@ wss.on("connection", async (ws, req) => {
         stacked.vy = 0;
         stacked.floatY = pos.y;
         stacked.floatTime = Number(stacked.floatTime) || 0;
+        stacked.pickupLockedUntil = Math.max(Number(stacked.pickupLockedUntil) || 0, pickupLockedUntil);
         await dropsDB.update({ id: stacked.id }, { id: stacked.id, worldName, ...stacked, updatedAt: formatDateForMySQL() }, { upsert: true });
         broadcast({ type: "drop_spawn", drop: stacked }, null, worldName);
         return;
@@ -2158,6 +2162,7 @@ wss.on("connection", async (ws, req) => {
         floatY: pos.y,
         floatTime: Number(floatTime) || 0,
         count: amount,
+        pickupLockedUntil,
       };
       dropsMap.set(dropId, drop);
       await dropsDB.update({ id: dropId }, { id: dropId, worldName, ...drop, updatedAt: formatDateForMySQL() }, { upsert: true });
@@ -2171,6 +2176,9 @@ wss.on("connection", async (ws, req) => {
       const dropsMap = getWorldDrops(worldName);
       const drop = dropsMap.get(dropId);
       if (!drop) {
+        return;
+      }
+      if ((Number(drop.pickupLockedUntil) || 0) > Date.now()) {
         return;
       }
 

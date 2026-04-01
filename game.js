@@ -2978,6 +2978,7 @@ function updatePlants(dt) {
 }
 
 function updateDrops(dt) {
+  const now = Date.now();
   for (const [dropId, drop] of drops.entries()) {
     const anchored = normalizeDropPosition(drop.x, drop.y);
     drop.x = anchored.x;
@@ -2993,6 +2994,11 @@ function updateDrops(dt) {
     const dx = drop.x - playerCenter;
     const dy = drop.y - playerCenterY;
     const dist = Math.hypot(dx, dy);
+
+    const pickupLockedUntil = Number(drop.pickupLockedUntil) || 0;
+    if (now < pickupLockedUntil) {
+      continue;
+    }
     
     if (dist < DROP_PICKUP_RANGE) {
       const consumed = pickupDrop(drop);
