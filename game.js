@@ -59,6 +59,10 @@ const INVENTORY_STATE_KEY = "agetopia_inventory_open";
 const INVENTORY_ITEMS_KEY = "agetopia_inventory_items";
 const LAST_USERNAME_KEY = "agetopia_last_username";
 const GROWING_PLANTS_KEY = "agetopia_growing_plants";
+const RENDER_SCALE_LOW = 0.65;
+const RENDER_SCALE_MEDIUM = 0.8;
+const RENDER_SCALE_HIGH = 0.95;
+const RENDER_SCALE_OPTIONS = [RENDER_SCALE_LOW, RENDER_SCALE_MEDIUM, RENDER_SCALE_HIGH];
 const INVENTORY_STACK_LIMIT = 99;
 const MAX_HEALTH = 100;
 const PUNCH_RANGE_TILES = 2.25;
@@ -198,13 +202,34 @@ let reconnectAttempts = 0;
 let gameplayUnlocked = false;
 let worldOwner = null; // Track who owns the world {userId, username}
 let settingsState = {
-  renderScale: 1,
+  renderScale: RENDER_SCALE_MEDIUM,
   showReachRing: true,
   showClouds: true,
 };
 
+function normalizeRenderScale(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return RENDER_SCALE_MEDIUM;
+
+  // Migrate older saved presets to the new more zoomed-in options.
+  if (Math.abs(parsed - 0.75) < 0.001) return RENDER_SCALE_LOW;
+  if (Math.abs(parsed - 1) < 0.001) return RENDER_SCALE_MEDIUM;
+  if (Math.abs(parsed - 1.25) < 0.001) return RENDER_SCALE_HIGH;
+
+  let nearest = RENDER_SCALE_OPTIONS[0];
+  let nearestDelta = Math.abs(parsed - nearest);
+  for (const preset of RENDER_SCALE_OPTIONS) {
+    const delta = Math.abs(parsed - preset);
+    if (delta < nearestDelta) {
+      nearest = preset;
+      nearestDelta = delta;
+    }
+  }
+  return nearest;
+}
+
 function resizeCanvas() {
-  const scale = Number(settingsState.renderScale) || 1;
+  const scale = normalizeRenderScale(settingsState.renderScale);
   canvas.width = Math.max(640, Math.floor(window.innerWidth * scale));
   canvas.height = Math.max(360, Math.floor(window.innerHeight * scale));
   ctx.imageSmoothingEnabled = false;
@@ -437,12 +462,12 @@ function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     settingsState = {
-      renderScale: Number(saved.renderScale) || 1,
+      renderScale: normalizeRenderScale(saved.renderScale),
       showReachRing: saved.showReachRing !== false,
       showClouds: saved.showClouds !== false,
     };
   } catch {
-    settingsState = { renderScale: 1, showReachRing: true, showClouds: true };
+    settingsState = { renderScale: RENDER_SCALE_MEDIUM, showReachRing: true, showClouds: true };
   }
 
   if (graphicsScaleEl) graphicsScaleEl.value = String(settingsState.renderScale);
@@ -615,7 +640,7 @@ function saveSettings() {
 }
 
 function applySettingsFromControls() {
-  settingsState.renderScale = Number(graphicsScaleEl?.value || 1);
+  settingsState.renderScale = normalizeRenderScale(graphicsScaleEl?.value);
   settingsState.showReachRing = !!toggleReachRingEl?.checked;
   settingsState.showClouds = !!toggleCloudsEl?.checked;
   saveSettings();

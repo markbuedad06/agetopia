@@ -29,6 +29,27 @@ A lightweight Growtopia-inspired sandbox with optional online multiplayer.
 You can replace any SVG with your own PNG/SVG file and keep the same filename.
 If an image is missing, the game falls back to a solid color tile.
 
+## Auto Push On Change
+
+You can run a local watcher that automatically commits and pushes updates.
+
+Tracked files only (recommended):
+
+	npm run autosync
+
+Tracked + untracked files:
+
+	npm run autosync:all
+
+Or use CMD directly:
+
+	start-auto-sync.cmd
+
+Notes:
+- The watcher polls every 8 seconds.
+- It creates commits like `chore(auto): sync YYYY-MM-DD HH:mm:ss`.
+- Keep this running in a terminal window while you work.
+
 ## Run Singleplayer
 
 Open `index.html` in a browser.

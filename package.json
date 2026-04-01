@@ -6,7 +6,9 @@
   "main": "server.js",
   "scripts": {
     "server": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "autosync": "powershell -NoProfile -ExecutionPolicy Bypass -File ./auto-sync.ps1",
+    "autosync:all": "powershell -NoProfile -ExecutionPolicy Bypass -File ./auto-sync.ps1 -IncludeUntracked"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
