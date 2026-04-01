@@ -3004,7 +3004,7 @@ function updateDrops(dt) {
     }
 
     if (dropTx === playerTx && dropTy === playerTy) {
-      const consumed = pickupDrop(drop);
+      const consumed = pickupDrop(drop, playerTx, playerTy);
       if (consumed) {
         drops.delete(dropId);
       }
@@ -3012,7 +3012,7 @@ function updateDrops(dt) {
   }
 }
 
-function pickupDrop(drop) {
+function pickupDrop(drop, playerTx, playerTy) {
   const itemId = drop.tile;
   const dropCount = normalizeDropCount(drop.count);
   if (!inventory[itemId]) {
@@ -3048,7 +3048,15 @@ function pickupDrop(drop) {
   
   saveInventoryItems();
   if (ONLINE_MODE && networkState.connected) {
-    sendSocket({ type: "drop_collect", id: drop.id, amount: collected });
+    sendSocket({
+      type: "drop_collect",
+      id: drop.id,
+      amount: collected,
+      tx: playerTx,
+      ty: playerTy,
+      x: player.x,
+      y: player.y,
+    });
   }
   
   // Get item name from itemDefs (handles both blocks and seeds)
