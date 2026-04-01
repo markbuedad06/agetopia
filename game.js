@@ -71,6 +71,8 @@ const PUNCH_ANIM_MS = 180;
 const DIGIT_COMBO_TIMEOUT_MS = 1600;
 const KNOCKBACK_PUSH = 360;
 const KNOCKBACK_LIFT = 240;
+const KNOCKBACK_NUDGE_DURATION = 0.12;
+const KNOCKBACK_RECOVERY_MS = 180;
 const GRAVITY = 1200;
 const MAX_FALL_SPEED = 900;
 const MAX_JUMP_HEIGHT_BLOCKS = 3;
@@ -86,6 +88,8 @@ const LAVA_KNOCKBACK = 420;
 const LAVA_CONTACT_INSET = 0;
 const LAVA_TOUCH_TOLERANCE = 1;
 const LAVA_SWEEP_STEP_PX = TILE * 0.25;
+const UNSTICK_SEARCH_RADIUS = TILE * 1.5;
+const UNSTICK_SEARCH_STEP = 2;
 const LAVA_TILE = 16;
 
 const tileDefs = {
@@ -468,6 +472,10 @@ const player = {
   punchUntil: 0,
   nextPunchAt: 0,
   lastLavaHitAt: 0,
+  knockbackUntil: 0,
+  pendingNudgeX: 0,
+  pendingNudgeY: 0,
+  pendingNudgeTime: 0,
   animDirection: "right",
   isMoving: false,
 };
@@ -1374,29 +1382,147 @@ function getPlayerTileBounds() {
   return { left, right, top, bottom };
 }
 
-function moveWithCollisions(dt) {
-  const nextX = player.x + player.vx * dt;
-  if (!rectIntersectsSolid(nextX, player.y, player.w, player.h)) {
-    player.x = nextX;
-  } else {
-    const step = Math.sign(player.vx) || 0;
-    while (step !== 0 && !rectIntersectsSolid(player.x + step, player.y, player.w, player.h)) {
-      player.x += step;
+function movePlayerAxis(axis, delta, stopVelocityOnCollision = true) {
+  if (!delta) return 0;
+
+  const isX = axis === "x";
+  const target = (isX ? player.x : player.y) + delta;
+  const directX = isX ? target : player.x;
+  const directY = isX ? player.y : target;
+  if (!rectIntersectsSolid(directX, directY, player.w, player.h)) {
+    if (isX) {
+      player.x = target;
+    } else {
+      player.y = target;
     }
-    player.vx = 0;
+    return delta;
   }
 
-  const nextY = player.y + player.vy * dt;
-  if (!rectIntersectsSolid(player.x, nextY, player.w, player.h)) {
-    player.y = nextY;
-    player.onGround = false;
-  } else {
-    const step = Math.sign(player.vy) || 0;
-    while (step !== 0 && !rectIntersectsSolid(player.x, player.y + step, player.w, player.h)) {
-      player.y += step;
+  const direction = Math.sign(delta) || 0;
+  if (direction === 0) return 0;
+
+  let moved = 0;
+  const wholeSteps = Math.floor(Math.abs(delta));
+  for (let i = 0; i < wholeSteps; i += 1) {
+    const nextX = isX ? player.x + direction : player.x;
+    const nextY = isX ? player.y : player.y + direction;
+    if (rectIntersectsSolid(nextX, nextY, player.w, player.h)) {
+      break;
     }
-    if (player.vy > 0) player.onGround = true;
-    player.vy = 0;
+    if (isX) {
+      player.x += direction;
+    } else {
+      player.y += direction;
+    }
+    moved += direction;
+  }
+
+  const remainder = Math.abs(delta) - wholeSteps;
+  if (remainder > 0) {
+    const fracStep = direction * remainder;
+    const nextX = isX ? player.x + fracStep : player.x;
+    const nextY = isX ? player.y : player.y + fracStep;
+    if (!rectIntersectsSolid(nextX, nextY, player.w, player.h)) {
+      if (isX) {
+        player.x += fracStep;
+      } else {
+        player.y += fracStep;
+      }
+      moved += fracStep;
+    }
+  }
+
+  if (stopVelocityOnCollision && moved !== delta) {
+    if (isX) {
+      player.vx = 0;
+    } else {
+      if (delta > 0) player.onGround = true;
+      player.vy = 0;
+    }
+  }
+
+  return moved;
+}
+
+function queueSmoothNudge(dx, dy, durationSeconds = KNOCKBACK_NUDGE_DURATION) {
+  const safeDx = Number.isFinite(dx) ? dx : 0;
+  const safeDy = Number.isFinite(dy) ? dy : 0;
+  if (Math.abs(safeDx) < 0.01 && Math.abs(safeDy) < 0.01) return;
+
+  const duration = Math.max(0.05, Number(durationSeconds) || KNOCKBACK_NUDGE_DURATION);
+  player.pendingNudgeX += safeDx;
+  player.pendingNudgeY += safeDy;
+  player.pendingNudgeTime = Math.max(player.pendingNudgeTime, duration);
+}
+
+function applyQueuedNudge(dt) {
+  if (player.pendingNudgeTime <= 0) return;
+
+  const stepTime = Math.min(dt, player.pendingNudgeTime);
+  const ratio = stepTime / Math.max(player.pendingNudgeTime, 0.0001);
+  const moveX = player.pendingNudgeX * ratio;
+  const moveY = player.pendingNudgeY * ratio;
+
+  player.pendingNudgeX -= moveX;
+  player.pendingNudgeY -= moveY;
+  player.pendingNudgeTime -= stepTime;
+
+  movePlayerAxis("x", moveX, false);
+  movePlayerAxis("y", moveY, false);
+
+  if (player.pendingNudgeTime <= 0.0001) {
+    if (Math.abs(player.pendingNudgeX) > 0.001) {
+      movePlayerAxis("x", player.pendingNudgeX, false);
+    }
+    if (Math.abs(player.pendingNudgeY) > 0.001) {
+      movePlayerAxis("y", player.pendingNudgeY, false);
+    }
+    player.pendingNudgeX = 0;
+    player.pendingNudgeY = 0;
+    player.pendingNudgeTime = 0;
+  }
+}
+
+function resolvePlayerOverlap() {
+  if (!rectIntersectsSolid(player.x, player.y, player.w, player.h)) return false;
+
+  const originX = player.x;
+  const originY = player.y;
+  for (let radius = UNSTICK_SEARCH_STEP; radius <= UNSTICK_SEARCH_RADIUS; radius += UNSTICK_SEARCH_STEP) {
+    const candidates = [
+      [0, -radius],
+      [0, radius],
+      [-radius, 0],
+      [radius, 0],
+      [-radius, -radius],
+      [radius, -radius],
+      [-radius, radius],
+      [radius, radius],
+    ];
+
+    for (const [offsetX, offsetY] of candidates) {
+      const testX = originX + offsetX;
+      const testY = originY + offsetY;
+      if (rectIntersectsSolid(testX, testY, player.w, player.h)) continue;
+
+      player.x = testX;
+      player.y = testY;
+      player.vx *= 0.4;
+      if (player.vy > 0) player.vy = 0;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function moveWithCollisions(dt) {
+  const deltaX = player.vx * dt;
+  const deltaY = player.vy * dt;
+  movePlayerAxis("x", deltaX, true);
+  const movedY = movePlayerAxis("y", deltaY, true);
+  if (deltaY !== 0 && movedY === deltaY) {
+    player.onGround = false;
   }
 }
 
@@ -1446,10 +1572,12 @@ function triggerPunchAnimation(id) {
 
 function applyKnockback(targetId, impulseX, impulseY, nudgeX = 0, nudgeY = 0) {
   if (String(targetId) === String(networkState.playerId)) {
-    player.x += nudgeX;
-    player.y += nudgeY;
     player.vx += impulseX;
     player.vy = Math.min(player.vy, impulseY);
+    queueSmoothNudge(nudgeX, nudgeY);
+    player.knockbackUntil = Math.max(player.knockbackUntil, currentNow + KNOCKBACK_RECOVERY_MS);
+    player.onGround = false;
+    resolvePlayerOverlap();
     return;
   }
 
@@ -3151,6 +3279,10 @@ function respawnLocal() {
   player.y = (doorBaseY - 2) * TILE;
   player.vx = 0;
   player.vy = 0;
+  player.pendingNudgeX = 0;
+  player.pendingNudgeY = 0;
+  player.pendingNudgeTime = 0;
+  player.knockbackUntil = 0;
   player.health = MAX_HEALTH;
   setAuthMessage("Respawned at spawn.");
 }
@@ -3219,10 +3351,12 @@ function handleLavaDamage(now, fromX = player.x, fromY = player.y) {
   const nudgeX = dir * 22;
   const nudgeY = -10;
 
-  player.x += nudgeX;
-  player.y += nudgeY;
+  queueSmoothNudge(nudgeX, nudgeY);
   player.vx += knockVX;
   player.vy = Math.min(player.vy, knockVY);
+  player.knockbackUntil = Math.max(player.knockbackUntil, now + KNOCKBACK_RECOVERY_MS);
+  player.onGround = false;
+  resolvePlayerOverlap();
   player.health = Math.max(0, player.health - LAVA_DAMAGE);
   setAuthMessage("Ouch! Lava burns.");
 
@@ -3245,7 +3379,8 @@ function update(dt, now) {
   if (moveLeft) desiredVX -= player.speed;
   if (moveRight) desiredVX += player.speed;
 
-  const accel = player.onGround ? 0.24 : 0.12;
+  const knockbackControlScale = now < player.knockbackUntil ? 0.35 : 1;
+  const accel = (player.onGround ? 0.24 : 0.12) * knockbackControlScale;
   player.vx += (desiredVX - player.vx) * accel;
 
   if (Math.abs(player.vx) > 1) {
@@ -3285,7 +3420,9 @@ function update(dt, now) {
 
   const prevX = player.x;
   const prevY = player.y;
+  applyQueuedNudge(dt);
   moveWithCollisions(dt);
+  resolvePlayerOverlap();
   handleLavaDamage(now, prevX, prevY);
   tryBreak(dt);
   tryPlace();
