@@ -37,10 +37,11 @@ const KNOCKBACK_LIFT = -260;
 const LOCK_RADIUS = 10; // Tiles around a land_lock that are protected
 const LAND_LOCK_TILE = 15;
 const LAVA_TILE = 16;
+const PLAYER_HITBOX_SIZE = TILE * 0.8;
 const LAVA_DAMAGE = 15;
 const LAVA_COOLDOWN_MS = 900;
 const LAVA_KNOCKBACK = 420;
-const LAVA_CONTACT_INSET = 6;
+const LAVA_CONTACT_INSET = 0;
 
 const app = express();
 const server = http.createServer(app);
@@ -182,8 +183,8 @@ function getPlayerCenterTile(player) {
   const rawY = Number(player?.y);
   const safeX = Number.isFinite(rawX) ? rawX : 0;
   const safeY = Number.isFinite(rawY) ? rawY : 0;
-  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor((safeX + 12) / TILE)));
-  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor((safeY + TILE * 0.5) / TILE)));
+  const tx = Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor((safeX + PLAYER_HITBOX_SIZE * 0.5) / TILE)));
+  const ty = Math.max(0, Math.min(WORLD_HEIGHT - 1, Math.floor((safeY + PLAYER_HITBOX_SIZE * 0.5) / TILE)));
   return { tx, ty };
 }
 
@@ -1325,10 +1326,10 @@ function parseTokenFromRequest(req) {
 }
 
 function distance(a, b) {
-  const ax = a.x + 12;
-  const ay = a.y + 22;
-  const bx = b.x + 12;
-  const by = b.y + 22;
+  const ax = a.x + PLAYER_HITBOX_SIZE * 0.5;
+  const ay = a.y + PLAYER_HITBOX_SIZE * 0.5;
+  const bx = b.x + PLAYER_HITBOX_SIZE * 0.5;
+  const by = b.y + PLAYER_HITBOX_SIZE * 0.5;
   return Math.hypot(ax - bx, ay - by);
 }
 
@@ -1395,8 +1396,8 @@ wss.on("connection", async (ws, req) => {
   };
 
   function touchesLavaTile(p) {
-    const pW = 24;
-    const pH = 32;
+    const pW = PLAYER_HITBOX_SIZE;
+    const pH = PLAYER_HITBOX_SIZE;
     const contactLeft = p.x + LAVA_CONTACT_INSET;
     const contactRight = p.x + pW - LAVA_CONTACT_INSET;
     const contactTop = p.y + LAVA_CONTACT_INSET;
@@ -1413,8 +1414,8 @@ wss.on("connection", async (ws, req) => {
         if (worldArr[indexOf(tx, ty)] !== LAVA_TILE) continue;
         const tileX = tx * TILE;
         const tileY = ty * TILE;
-        const xOverlap = contactRight > tileX && contactLeft < tileX + TILE;
-        const yOverlap = contactBottom > tileY && contactTop < tileY + TILE;
+        const xOverlap = contactRight >= tileX && contactLeft <= tileX + TILE;
+        const yOverlap = contactBottom >= tileY && contactTop <= tileY + TILE;
         if (xOverlap && yOverlap) {
           return { tx, ty };
         }
@@ -1460,7 +1461,7 @@ wss.on("connection", async (ws, req) => {
     p.lastLavaHitAt = now;
 
     const lavaCenterX = lavaHit.tx * TILE + TILE * 0.5;
-    const playerCenterX = p.x + 12;
+    const playerCenterX = p.x + PLAYER_HITBOX_SIZE * 0.5;
     const dir = Math.sign(playerCenterX - lavaCenterX) || (p.facing || 1);
     const knockVX = LAVA_KNOCKBACK * dir;
     const knockVY = KNOCKBACK_LIFT;
@@ -1688,7 +1689,7 @@ wss.on("connection", async (ws, req) => {
         player.lastPunchAt = now;
         broadcast({ type: "punch", id: player.id, targetId: target.id }, null, worldName);
 
-        const dx = (target.x + 12) - (player.x + 12);
+        const dx = (target.x + PLAYER_HITBOX_SIZE * 0.5) - (player.x + PLAYER_HITBOX_SIZE * 0.5);
         const sign = dx === 0 ? player.facing : Math.sign(dx);
         const knockVX = sign * KNOCKBACK_PUSH;
         const knockVY = KNOCKBACK_LIFT;
