@@ -1782,14 +1782,20 @@ body {
   right: auto;
   left: auto;
   bottom: auto;
-  min-width: 56px;
-  height: 56px;
+  min-width: 50px;
+  width: 50px;
+  height: 50px;
   margin: 0;
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #inventoryExpandBtn::before {
   content: "\2637";
+  font-size: 24px;
+  line-height: 1;
 }
 
 #chatToggleBtn:hover,
@@ -1864,8 +1870,7 @@ body {
 }
 
 .arrow-btn,
-.action-btn.jump,
-#btnPunch {
+.action-btn.jump {
   width: 82px;
   height: 82px;
   border: 2px solid rgba(209, 238, 255, 0.98);
@@ -1894,7 +1899,9 @@ body {
   bottom: auto;
   z-index: 30;
   flex: 0 0 auto;
-  font-size: 1.95rem;
+  width: 50px;
+  height: 50px;
+  font-size: 1.55rem;
 }
 
 .inventory-bar {
@@ -1965,22 +1972,22 @@ body {
   }
 
   .arrow-btn,
-  .action-btn.jump,
-  #btnPunch {
+  .action-btn.jump {
     width: 74px;
     height: 74px;
     border-radius: 18px;
   }
 
   #btnPunch {
-    width: 74px;
-    height: 74px;
+    width: 46px;
+    height: 46px;
+    font-size: 1.4rem;
   }
 
   #inventoryExpandBtn {
-    min-width: 50px;
-    width: 50px;
-    height: 50px;
+    min-width: 46px;
+    width: 46px;
+    height: 46px;
   }
 }
 
@@ -1988,8 +1995,7 @@ body {
   #menuBtn,
   #friendsChatToggle,
   #chatToggleBtn,
-  #btnFullscreen,
-  #inventoryExpandBtn {
+  #btnFullscreen {
     width: 50px;
     height: 50px;
   }
@@ -1997,8 +2003,7 @@ body {
   #menuBtn::before,
   #friendsChatToggle::before,
   #chatToggleBtn::before,
-  #btnFullscreen::before,
-  #inventoryExpandBtn::before {
+  #btnFullscreen::before {
     font-size: 25px;
     line-height: 44px;
   }
@@ -2008,22 +2013,27 @@ body {
   }
 
   .arrow-btn,
-  .action-btn.jump,
-  #btnPunch {
+  .action-btn.jump {
     width: 66px;
     height: 66px;
     font-size: 1.65rem;
   }
 
   #btnPunch {
-    width: 66px;
-    height: 66px;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
   }
 
   #inventoryExpandBtn {
-    min-width: 44px;
-    width: 44px;
-    height: 44px;
+    min-width: 38px;
+    width: 38px;
+    height: 38px;
+  }
+
+  #inventoryExpandBtn::before {
+    font-size: 20px;
+    line-height: 1;
   }
 
   .movement-pad-left {
