@@ -2746,6 +2746,12 @@ function connectSocket(token) {
       if (String(msg.id) === String(networkState.playerId)) {
         player.x = msg.x;
         player.y = msg.y;
+        player.vx = 0;
+        player.vy = 0;
+        player.pendingNudgeX = 0;
+        player.pendingNudgeY = 0;
+        player.pendingNudgeTime = 0;
+        player.knockbackUntil = 0;
         player.health = msg.health ?? MAX_HEALTH;
       } else {
         const current = remotePlayers.get(msg.id);
@@ -2761,6 +2767,7 @@ function connectSocket(token) {
 
     if (msg.type === "block_update") {
       setTile(msg.x, msg.y, msg.tile);
+      resolvePlayerOverlap();
       return;
     }
 
