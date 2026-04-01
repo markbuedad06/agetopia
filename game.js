@@ -324,6 +324,8 @@ const player = {
   punchUntil: 0,
   nextPunchAt: 0,
   lastLavaHitAt: 0,
+  animDirection: "right",
+  isMoving: false,
 };
 
 const camera = {
@@ -370,6 +372,15 @@ const breakState = {
 };
 
 const textureCache = new Map();
+const PLAYER_SPRITE_FRAME_SIZE = 32;
+const PLAYER_SPRITE_FRAMES = 8;
+const PLAYER_SPRITE_FPS = 12;
+const PLAYER_SPRITES = {
+  right: "Journals/walking right.png",
+  left: "Journals/walking left.png",
+  down: "Journals/walking down.png",
+  up: "Journals/walikng up.png",
+};
 
 function setAuthMessage(message) {
   if (authMessageEl) {
@@ -1840,7 +1851,64 @@ function drawHealthBar(worldX, worldY, health, maxHealth, label, isOwner = false
   ctx.fillText(label, px + 12, py - 19);
 }
 
-function drawPlayerBody(worldX, worldY, facing, bodyColor, attackStrength = 0) {
+function drawPlayerSprite(worldX, worldY, direction, isMoving) {
+  const px = worldX - camera.x;
+  const py = worldY - camera.y;
+  const normalizedDirection = PLAYER_SPRITES[direction] ? direction : "right";
+  const sheet = getTexture(PLAYER_SPRITES[normalizedDirection]);
+  if (!(sheet && sheet.complete && sheet.naturalWidth >= PLAYER_SPRITE_FRAME_SIZE && sheet.naturalHeight >= PLAYER_SPRITE_FRAME_SIZE)) {
+    return false;
+  }
+
+  const frame = isMoving
+    ? Math.floor((currentNow / 1000) * PLAYER_SPRITE_FPS) % PLAYER_SPRITE_FRAMES
+    : 0;
+  const sx = frame * PLAYER_SPRITE_FRAME_SIZE;
+  const drawW = player.h;
+  const drawH = player.h;
+  const drawX = px + Math.floor((player.w - drawW) * 0.5);
+  const drawY = py + (player.h - drawH);
+
+  ctx.drawImage(
+    sheet,
+    sx,
+    0,
+    PLAYER_SPRITE_FRAME_SIZE,
+    PLAYER_SPRITE_FRAME_SIZE,
+    drawX,
+    drawY,
+    drawW,
+    drawH
+  );
+  return true;
+}
+
+function getRemoteAnimationState(remotePlayer) {
+  const prevX = Number(remotePlayer._prevAnimX ?? remotePlayer.x);
+  const prevY = Number(remotePlayer._prevAnimY ?? remotePlayer.y);
+  const dx = Number(remotePlayer.x) - prevX;
+  const dy = Number(remotePlayer.y) - prevY;
+  remotePlayer._prevAnimX = remotePlayer.x;
+  remotePlayer._prevAnimY = remotePlayer.y;
+
+  let direction = remotePlayer.animDirection || (remotePlayer.facing < 0 ? "left" : "right");
+  if (Math.abs(dx) > 0.15) {
+    direction = dx < 0 ? "left" : "right";
+  } else if (Math.abs(dy) > 0.15) {
+    direction = dy < 0 ? "up" : "down";
+  }
+
+  const isMoving = Math.abs(dx) > 0.15 || Math.abs(dy) > 0.15;
+  remotePlayer.animDirection = direction;
+  return { direction, isMoving };
+}
+
+function drawPlayerBody(worldX, worldY, facing, bodyColor, attackStrength = 0, direction = null, isMoving = false) {
+  const spriteDirection = direction || (facing < 0 ? "left" : "right");
+  if (drawPlayerSprite(worldX, worldY, spriteDirection, isMoving)) {
+    return;
+  }
+
   const px = worldX - camera.x;
   const py = worldY - camera.y;
   const shoulderX = px + (facing > 0 ? player.w - 6 : 6);
@@ -1971,7 +2039,8 @@ function drawChatBubble(worldX, worldY, text) {
 function drawRemotePlayers() {
   remotePlayers.forEach((p) => {
     const attackStrength = Math.max(0, (p.punchUntil || 0) - currentNow) / PUNCH_ANIM_MS;
-    drawPlayerBody(p.x, p.y, p.facing, "#73318e", attackStrength);
+    const anim = getRemoteAnimationState(p);
+    drawPlayerBody(p.x, p.y, p.facing, "#73318e", attackStrength, anim.direction, anim.isMoving);
     const ownerId = worldOwner ? String(worldOwner.userId) : null;
     const playerOwnerId = p ? String(p.userId ?? p.id) : null;
     const isOwner = ownerId && playerOwnerId === ownerId;
@@ -3035,6 +3104,7 @@ function update(dt, now) {
 
   const moveLeft = keys.has("KeyA") || keys.has("ArrowLeft");
   const moveRight = keys.has("KeyD") || keys.has("ArrowRight");
+  const moveDown = keys.has("KeyS") || keys.has("ArrowDown");
   const jump = keys.has("KeyW") || keys.has("ArrowUp") || keys.has("Space");
 
   let desiredVX = 0;
@@ -3047,6 +3117,19 @@ function update(dt, now) {
   if (Math.abs(player.vx) > 1) {
     player.facing = Math.sign(player.vx);
   }
+
+  if (moveLeft !== moveRight) {
+    player.animDirection = moveLeft ? "left" : "right";
+  } else if (!player.onGround) {
+    player.animDirection = player.vy < -40 ? "up" : "down";
+  } else if (moveDown) {
+    player.animDirection = "down";
+  }
+
+  player.isMoving =
+    Math.abs(player.vx) > 8 ||
+    Math.abs(player.vy) > 40 ||
+    moveDown;
 
   if (jump && player.onGround) {
     player.vy = -player.jump;
@@ -3090,7 +3173,7 @@ function draw() {
     drawReachRing();
   }
   const attackStrength = Math.max(0, player.punchUntil - currentNow) / PUNCH_ANIM_MS;
-  drawPlayerBody(player.x, player.y, player.facing, "#1f3b7c", attackStrength);
+  drawPlayerBody(player.x, player.y, player.facing, "#1f3b7c", attackStrength, player.animDirection, player.isMoving);
   const playerIsOwner = worldOwner && String(networkState.userId) === String(worldOwner.userId);
   drawHealthBar(player.x, player.y, player.health, player.maxHealth, networkState.username || "You", playerIsOwner);
   const selfId = networkState.playerId || networkState.userId;
