@@ -60,6 +60,8 @@ const INVENTORY_ITEMS_KEY = "agetopia_inventory_items";
 const LAST_USERNAME_KEY = "agetopia_last_username";
 const GROWING_PLANTS_KEY = "agetopia_growing_plants";
 const ASSET_VERSION = "20260402-grass";
+const MANAGED_ASSET_PREFIXES = ["assets/blocks/", "assets/items/"];
+const ASSET_MANIFEST_REFRESH_MS = 3000;
 const RENDER_SCALE_LOW = 0.55;
 const RENDER_SCALE_MEDIUM = 0.7;
 const RENDER_SCALE_HIGH = 0.85;
@@ -95,8 +97,8 @@ const LAVA_TILE = 16;
 
 const tileDefs = {
   0: { name: "Air", color: "rgba(0,0,0,0)", solid: false, hardness: 0, texture: null, rarity: 0 },
-  1: { name: "Grass", color: "#62c462", solid: true, hardness: 0.3, texture: `assets/blocks/grass-block.png?v=${ASSET_VERSION}`, rarity: 1 },
-  2: { name: "Dirt", color: "#8f5f3d", solid: true, hardness: 0.5, texture: "assets/blocks/dirt-block.png?v=${ASSET_VERSION}", rarity: 1 },
+  1: { name: "Grass", color: "#62c462", solid: true, hardness: 0.3, texture: "assets/blocks/grass-block.png", rarity: 1 },
+  2: { name: "Dirt", color: "#8f5f3d", solid: true, hardness: 0.5, texture: "assets/blocks/dirt-block.png", rarity: 1 },
   3: { name: "Stone", color: "#8d98a2", solid: true, hardness: 0.8, texture: "assets/blocks/stone.svg", rarity: 2 },
   4: { name: "Wood", color: "#c48a4d", solid: true, hardness: 0.4, texture: "assets/blocks/wood.svg", rarity: 1 },
   5: { name: "Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: "assets/blocks/cloud.svg", rarity: 1 },
@@ -526,6 +528,10 @@ const breakState = {
 };
 
 const textureCache = new Map();
+let assetManifestVersion = ASSET_VERSION;
+let assetManifestEntries = new Map();
+let assetManifestTimer = null;
+let assetManifestFetchWarned = false;
 const PLAYER_SPRITE_FRAME_SIZE = 32;
 const PLAYER_SPRITE_FRAMES = 8;
 const PLAYER_SPRITE_FPS = 12;
