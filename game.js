@@ -96,7 +96,7 @@ const LAVA_TILE = 16;
 const tileDefs = {
   0: { name: "Air", color: "rgba(0,0,0,0)", solid: false, hardness: 0, texture: null, rarity: 0 },
   1: { name: "Grass", color: "#62c462", solid: true, hardness: 0.3, texture: "assets/blocks/grass-block.png?v=${ASSET_VERSION}", rarity: 1 },
-  2: { name: "Dirt", color: "#8f5f3d", solid: true, hardness: 0.5, texture: "assets/blocks/dirt.png", rarity: 1 },
+  2: { name: "Dirt", color: "#8f5f3d", solid: true, hardness: 0.5, texture: "assets/blocks/dirt-block.png", rarity: 1 },
   3: { name: "Stone", color: "#8d98a2", solid: true, hardness: 0.8, texture: "assets/blocks/stone.svg", rarity: 2 },
   4: { name: "Wood", color: "#c48a4d", solid: true, hardness: 0.4, texture: "assets/blocks/wood.svg", rarity: 1 },
   5: { name: "Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: "assets/blocks/cloud.svg", rarity: 1 },
@@ -116,7 +116,7 @@ const tileDefs = {
 
 const itemDefs = {
   1: { name: "Grass Block", icon: "assets/items/grass-block.png", color: "#62c462", rarity: 1 },
-  2: { name: "Dirt Block", icon: "assets/items/dirt.png", color: "#8f5f3d", rarity: 1 },
+  2: { name: "Dirt Block", icon: "assets/items/dirt-block.png", color: "#8f5f3d", rarity: 1 },
   3: { name: "Stone Block", icon: "assets/items/stone-block.svg", color: "#8d98a2", rarity: 1 },
   4: { name: "Wood Block", icon: "assets/items/wood-block.svg", color: "#c48a4d", rarity: 1 },
   5: { name: "Cloud Block", icon: "assets/items/cloud-piece.svg", color: "#dae9ff", rarity: 1 },
