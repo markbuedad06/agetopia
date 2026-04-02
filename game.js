@@ -3151,6 +3151,8 @@ function requestDrops() {
 async function setupAuthPanel() {
   lockGameplay();
   loadSettings();
+  await refreshAssetManifest();
+  startAssetManifestSync();
   setupMenuInteractions();
   setupChatUI();
   setupFriendsChatUI();
