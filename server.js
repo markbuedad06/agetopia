@@ -26,8 +26,19 @@ if (!MYSQL_URL && process.env.MYSQLHOST) {
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret-in-production";
 const TILE = 32;
-const WORLD_WIDTH = 240;
-const WORLD_HEIGHT = 90;
+const WORLD_WIDTH = 151;
+const WORLD_HEIGHT = 151;
+const LAVA_PATCH_MIN_HEIGHT = 1;
+const LAVA_PATCH_MAX_HEIGHT = 5;
+const STONE_PATCH_MIN_HEIGHT = 6;
+const STONE_PATCH_MAX_HEIGHT = 40;
+const DIRT_UPPER_MIN_HEIGHT = 41;
+const DIRT_UPPER_MAX_HEIGHT = 45;
+const GRASS_SURFACE_HEIGHT = 46;
+const DOOR_HEIGHT = 47;
+const CLOUD_MIN_HEIGHT = 81;
+const DEFAULT_DOOR_X = Math.floor(WORLD_WIDTH / 2);
+const DEFAULT_DOOR_Y = WORLD_HEIGHT - DOOR_HEIGHT;
 const INVENTORY_STACK_LIMIT = 99;
 const MAX_HEALTH = 100;
 const PUNCH_DAMAGE = 20;
@@ -392,8 +403,8 @@ async function ensureSchema() {
   await pool.query(`CREATE TABLE IF NOT EXISTS worlds (
     worldName VARCHAR(64) PRIMARY KEY,
     userId VARCHAR(191) NOT NULL,
-    doorX INT DEFAULT 120,
-    doorY INT DEFAULT 45,
+    doorX INT DEFAULT ${DEFAULT_DOOR_X},
+    doorY INT DEFAULT ${DEFAULT_DOOR_Y},
     createdAt DATETIME NOT NULL,
     updatedAt DATETIME NOT NULL,
     INDEX world_user_idx (userId)
@@ -724,9 +735,12 @@ function makeWorldsRepo() {
     insert: async (doc) => {
       const createdAt = doc.createdAt || formatDateForMySQL();
       const updatedAt = doc.updatedAt || formatDateForMySQL();
+      const fallbackDoor = getGeneratedDoorTile(doc.worldName || "default");
+      const doorX = Number.isFinite(Number(doc.doorX)) ? Number(doc.doorX) : fallbackDoor.x;
+      const doorY = Number.isFinite(Number(doc.doorY)) ? Number(doc.doorY) : fallbackDoor.y;
       await pool.query(
         "INSERT INTO worlds (worldName, userId, doorX, doorY, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE userId=VALUES(userId), doorX=VALUES(doorX), doorY=VALUES(doorY), updatedAt=VALUES(updatedAt)",
-        [doc.worldName, doc.userId, doc.doorX || 120, doc.doorY || 45, createdAt, updatedAt]
+        [doc.worldName, doc.userId, doorX, doorY, createdAt, updatedAt]
       );
     },
     update: async (filter, doc) => {
@@ -1219,52 +1233,84 @@ function inBounds(x, y) {
 
 const world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
 
-function pseudoNoise(x) {
-  return Math.sin(x * 0.14) * 0.55 + Math.sin(x * 0.047 + 23) * 0.3 + Math.sin(x * 0.008 + 60) * 0.15;
+function hashSeed(value) {
+  const text = String(value || "default");
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
-function generateWorld(world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT)) {
+function seededNoise2D(x, y, seed) {
+  const value = Math.sin((x + 1) * 12.9898 + (y + 1) * 78.233 + (seed + 1) * 0.00173) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+function yFromBottom(heightFromBottom) {
+  return WORLD_HEIGHT - heightFromBottom;
+}
+
+function getGeneratedDoorTile(worldName = "default") {
+  const seed = hashSeed(worldName);
+  const minDoorX = 2;
+  const maxDoorX = WORLD_WIDTH - 3;
+  const span = Math.max(1, maxDoorX - minDoorX + 1);
+  const roll = seededNoise2D(47, 7, seed + 401);
+  const doorX = minDoorX + Math.floor(roll * span);
+  return {
+    x: doorX,
+    y: yFromBottom(DOOR_HEIGHT),
+  };
+}
+
+function getDoorSpawnPosition(worldName = "default") {
+  const door = getGeneratedDoorTile(worldName);
+  return {
+    x: door.x * TILE,
+    y: Math.max(0, (door.y - 1) * TILE),
+  };
+}
+
+function generateWorld(world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT), worldName = "default") {
+  const seed = hashSeed(worldName);
+  world.fill(0);
+
   for (let x = 0; x < WORLD_WIDTH; x += 1) {
-    const base = 46;
-    const height = Math.floor(base + pseudoNoise(x) * 10);
-
-    for (let y = 0; y < WORLD_HEIGHT; y += 1) {
-      if (y < height) world[indexOf(x, y)] = 0;
-      else if (y === height) world[indexOf(x, y)] = 1;
-      else if (y < height + 4) world[indexOf(x, y)] = 2;
-      else world[indexOf(x, y)] = 3;
+    // 1-5 height: dirt with random lava patches.
+    for (let h = LAVA_PATCH_MIN_HEIGHT; h <= LAVA_PATCH_MAX_HEIGHT; h += 1) {
+      const y = yFromBottom(h);
+      const lavaPatch = seededNoise2D(Math.floor(x / 3), Math.floor(h / 2), seed + 17) < 0.22;
+      world[indexOf(x, y)] = lavaPatch ? LAVA_TILE : 2;
     }
 
-    if (x % 29 === 0) {
-      const cloudY = 15 + (x % 7);
-      for (let i = 0; i < 5; i += 1) {
-        if (inBounds(x + i, cloudY)) world[indexOf(x + i, cloudY)] = 5;
-      }
+    // 6-40 height: dirt with random stone patches.
+    for (let h = STONE_PATCH_MIN_HEIGHT; h <= STONE_PATCH_MAX_HEIGHT; h += 1) {
+      const y = yFromBottom(h);
+      const stonePatch = seededNoise2D(Math.floor(x / 4), Math.floor(h / 3), seed + 113) < 0.3;
+      world[indexOf(x, y)] = stonePatch ? 3 : 2;
     }
 
-    if (x % 37 === 0 && x > 10 && x < WORLD_WIDTH - 10) {
-      const trunkBase = height - 1;
-      for (let t = 1; t <= 4; t += 1) {
-        if (inBounds(x, trunkBase - t)) world[indexOf(x, trunkBase - t)] = 4;
-      }
-      if (inBounds(x - 1, trunkBase - 4)) world[indexOf(x - 1, trunkBase - 4)] = 1;
-      if (inBounds(x + 1, trunkBase - 4)) world[indexOf(x + 1, trunkBase - 4)] = 1;
-      if (inBounds(x, trunkBase - 5)) world[indexOf(x, trunkBase - 5)] = 1;
+    // 41-45 height: dirt.
+    for (let h = DIRT_UPPER_MIN_HEIGHT; h <= DIRT_UPPER_MAX_HEIGHT; h += 1) {
+      world[indexOf(x, yFromBottom(h))] = 2;
     }
-  }
 
-  // Place main door at world center for spawn/exit
-  const doorX = Math.floor(WORLD_WIDTH / 2);
-  const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
-  world[indexOf(doorX, doorBaseY)] = 7;
+    // 46 height: grass surface.
+    world[indexOf(x, yFromBottom(GRASS_SURFACE_HEIGHT))] = 1;
 
-  // Fill the bottom of the world with lava to create a lethal floor
-  const lavaDepth = 3;
-  for (let y = WORLD_HEIGHT - lavaDepth; y < WORLD_HEIGHT; y += 1) {
-    for (let x = 0; x < WORLD_WIDTH; x += 1) {
-      world[indexOf(x, y)] = LAVA_TILE;
+    // 81-max height: air with random cloud patches.
+    for (let h = CLOUD_MIN_HEIGHT; h <= WORLD_HEIGHT; h += 1) {
+      const y = yFromBottom(h);
+      const cloudPatch = seededNoise2D(Math.floor(x / 6), Math.floor(h / 4), seed + 271) < 0.18;
+      if (cloudPatch) world[indexOf(x, y)] = 5;
     }
   }
+
+  // 47 height: exactly one door at a random X.
+  const door = getGeneratedDoorTile(worldName);
+  world[indexOf(door.x, door.y)] = 7;
 
   return world;
 }
@@ -1280,7 +1326,7 @@ async function applyPersistedBlocks(worldName, world) {
 
 (() => {
   const defaultWorld = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
-  generateWorld(defaultWorld);
+  generateWorld(defaultWorld, "default");
   worldCache.set("default", { array: defaultWorld, loaded: false });
 })();
 
@@ -1414,7 +1460,7 @@ const worldPlayers = new Map();
 function getOrCreateWorldArray(worldName) {
   if (!worldCache.has(worldName)) {
     const world = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
-    generateWorld(world);
+    generateWorld(world, worldName);
     worldCache.set(worldName, { array: world, loaded: false });
   }
   return worldCache.get(worldName).array;
@@ -1476,10 +1522,9 @@ wss.on("connection", async (ws, req) => {
 
   const playerId = randomUUID();
   const profileId = profileKey(user.id, worldName);
-  const doorX = Math.floor(WORLD_WIDTH / 2);
-  const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
-  const doorSpawnX = doorX * TILE;
-  const doorSpawnY = doorBaseY * TILE;
+  const doorSpawn = getDoorSpawnPosition(worldName);
+  const doorSpawnX = doorSpawn.x;
+  const doorSpawnY = doorSpawn.y;
   const profile = await profilesDB.findOne({ profileId }) || {};
   const invDoc = await inventoriesDB.findOne({ key: inventoryKey(user.id) });
   const userInventory = sanitizeInventory(invDoc?.inventory);
@@ -1574,10 +1619,9 @@ wss.on("connection", async (ws, req) => {
 
   async function respawnPlayer(target) {
     target.health = MAX_HEALTH;
-    const tDoorX = Math.floor(WORLD_WIDTH / 2);
-    const tDoorBaseY = 46 + Math.floor(pseudoNoise(tDoorX) * 10);
-    target.x = tDoorX * TILE;
-    target.y = (tDoorBaseY - 2) * TILE;
+    const spawn = getDoorSpawnPosition(worldName);
+    target.x = spawn.x;
+    target.y = spawn.y;
     target.facing = 1;
 
     await profilesDB.update(
@@ -2089,9 +2133,8 @@ wss.on("connection", async (ws, req) => {
         if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(tile)) return;
         if (!inBounds(x, y)) return;
         
-        const doorX = Math.floor(WORLD_WIDTH / 2);
-        const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
-        const isDoorTile = (x === doorX && y === doorBaseY);
+        const doorTile = getGeneratedDoorTile(worldName);
+        const isDoorTile = (x === doorTile.x && y === doorTile.y);
         if (isDoorTile) return;  // Prevent breaking/placing on door
         
         if (tile < 0 || (tile > 6 && tile !== LAND_LOCK_TILE && tile !== LAVA_TILE)) return;  // Allow tiles 0-6, land_lock(15), lava(16)
