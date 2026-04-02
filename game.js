@@ -112,7 +112,7 @@ const tileDefs = {
   4: { name: "Wood", color: "#c48a4d", solid: true, hardness: 0.4, texture: "assets/blocks/wood.svg", rarity: 1 },
   5: { name: "Cloud", color: "#dae9ff", solid: false, hardness: 0, texture: "assets/blocks/cloud.svg", rarity: 1 },
   6: { name: "123 Block", color: "#f59e0b", solid: true, hardness: 0.45, texture: "assets/blocks/block-123.svg", rarity: 3 },
-   7: { name: "Door", color: "rgba(217, 119, 6, 0.3)", solid: false, hardness: 0, texture: "assets/blocks/door.svg", rarity: 0 },
+  7: { name: "Door", color: "rgba(217, 119, 6, 0.3)", solid: false, hardness: 0, texture: "assets/blocks/world-door.png", rarity: 0 },
    16: { name: "Lava", color: "#e25822", solid: true, hardness: 0.2, texture: "assets/blocks/lava.svg", rarity: 1 },
   15: { name: "Land Lock", color: "#FFD700", solid: true, hardness: 2.0, texture: "assets/blocks/land-lock.svg", rarity: 1 },
   // Growing seeds (100-106)
