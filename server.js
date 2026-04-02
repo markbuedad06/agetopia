@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs/promises");
 const http = require("http");
 const { randomUUID } = require("crypto");
 const mysql = require("mysql2/promise");
@@ -44,6 +45,12 @@ const LAVA_KNOCKBACK = 420;
 const LAVA_CONTACT_INSET = 0;
 const LAVA_TOUCH_TOLERANCE = 1;
 const LAVA_SWEEP_STEP_PX = TILE * 0.25;
+const ASSET_TABLE_NAME = "asset_textures";
+const ASSET_MANAGED_DIRECTORIES = [
+  { type: "block", absoluteDir: path.join(__dirname, "assets", "blocks"), publicPrefix: "assets/blocks/" },
+  { type: "item", absoluteDir: path.join(__dirname, "assets", "items"), publicPrefix: "assets/items/" },
+];
+const ASSET_ALLOWED_EXTENSIONS = new Set([".png", ".svg", ".webp", ".jpg", ".jpeg", ".gif"]);
 
 const app = express();
 const server = http.createServer(app);
@@ -223,6 +230,98 @@ async function ensureDropsLoaded(worldName) {
   worldDropsLoaded.add(worldName);
 }
 
+function normalizeAssetPath(assetPath) {
+  return String(assetPath || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .split("?")[0];
+}
+
+async function scanManagedAssets() {
+  const records = [];
+  const scans = await Promise.all(ASSET_MANAGED_DIRECTORIES.map(async (entry) => {
+    try {
+      const files = await fs.readdir(entry.absoluteDir, { withFileTypes: true });
+      return { entry, files };
+    } catch (err) {
+      if (err && err.code !== "ENOENT") {
+        console.error(`Failed to scan assets dir ${entry.absoluteDir}:`, err.message);
+      }
+      return { entry, files: [] };
+    }
+  }));
+
+  for (const { entry, files } of scans) {
+    for (const file of files) {
+      if (!file.isFile()) continue;
+      const ext = path.extname(file.name).toLowerCase();
+      if (!ASSET_ALLOWED_EXTENSIONS.has(ext)) continue;
+      const absolutePath = path.join(entry.absoluteDir, file.name);
+      let stat;
+      try {
+        stat = await fs.stat(absolutePath);
+      } catch (err) {
+        if (err && err.code !== "ENOENT") {
+          console.error(`Failed to stat asset ${absolutePath}:`, err.message);
+        }
+        continue;
+      }
+
+      const mtimeMs = Math.max(1, Math.floor(Number(stat.mtimeMs) || Date.now()));
+      const assetPath = normalizeAssetPath(`${entry.publicPrefix}${file.name}`);
+      records.push({
+        assetPath,
+        assetType: entry.type,
+        versionTag: String(mtimeMs),
+        mtimeMs,
+        updatedAt: formatDateForMySQL(new Date(mtimeMs)),
+      });
+    }
+  }
+
+  return records;
+}
+
+async function syncManagedAssetsTable() {
+  const records = await scanManagedAssets();
+
+  if (records.length === 0) {
+    await pool.query(`DELETE FROM ${ASSET_TABLE_NAME}`);
+    return;
+  }
+
+  await Promise.all(records.map((record) => pool.query(
+    `INSERT INTO ${ASSET_TABLE_NAME} (assetPath, assetType, versionTag, mtimeMs, updatedAt) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE assetType=VALUES(assetType), versionTag=VALUES(versionTag), mtimeMs=VALUES(mtimeMs), updatedAt=VALUES(updatedAt)`,
+    [record.assetPath, record.assetType, record.versionTag, record.mtimeMs, record.updatedAt]
+  )));
+
+  const keys = records.map((record) => record.assetPath);
+  const placeholders = keys.map(() => "?").join(",");
+  await pool.query(`DELETE FROM ${ASSET_TABLE_NAME} WHERE assetPath NOT IN (${placeholders})`, keys);
+}
+
+async function buildAssetsManifest() {
+  const [rows] = await pool.query(`SELECT assetPath, versionTag, mtimeMs FROM ${ASSET_TABLE_NAME}`);
+  const assets = {};
+  let latest = 0;
+
+  for (const row of rows) {
+    const assetPath = normalizeAssetPath(row.assetPath);
+    if (!assetPath) continue;
+    const version = String(row.versionTag || row.mtimeMs || Date.now());
+    assets[assetPath] = version;
+    const stamp = Number(row.mtimeMs || row.versionTag);
+    if (Number.isFinite(stamp)) {
+      latest = Math.max(latest, Math.floor(stamp));
+    }
+  }
+
+  return {
+    version: String(latest || Date.now()),
+    assets,
+  };
+}
+
 async function ensureSchema() {
   await pool.query(`CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -313,6 +412,16 @@ async function ensureSchema() {
     itemCount INT NOT NULL DEFAULT 1,
     updatedAt DATETIME NOT NULL,
     INDEX drop_world_idx (worldName)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS ${ASSET_TABLE_NAME} (
+    assetPath VARCHAR(191) PRIMARY KEY,
+    assetType ENUM('block','item') NOT NULL,
+    versionTag VARCHAR(64) NOT NULL,
+    mtimeMs BIGINT NOT NULL,
+    updatedAt DATETIME NOT NULL,
+    INDEX asset_type_idx (assetType),
+    INDEX asset_mtime_idx (mtimeMs)
   )`);
 
   try {
@@ -798,6 +907,9 @@ async function initStores() {
   
   // Cleanup: ensure all inventories have land_lock
   await ensureLandLockInAllInventories();
+
+  // Keep texture updates queryable through DB-backed manifest.
+  await syncManagedAssetsTable();
 }
 
 async function ensureLandLockInAllInventories() {
@@ -1279,6 +1391,17 @@ app.get("/api/worlds", authFromHeader, async (req, res) => {
   } catch (err) {
     console.error("Error fetching worlds list:", err);
     return res.status(500).json({ error: "Failed to fetch worlds" });
+  }
+});
+
+app.get("/api/assets/manifest", async (req, res) => {
+  try {
+    await syncManagedAssetsTable();
+    const manifest = await buildAssetsManifest();
+    return res.json(manifest);
+  } catch (err) {
+    console.error("Error building asset manifest:", err);
+    return res.status(500).json({ error: "Failed to build asset manifest" });
   }
 });
 
