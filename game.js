@@ -83,7 +83,7 @@ const MANUAL_DROP_FORWARD_OFFSET = TILE + 8;
 const MANUAL_DROP_PICKUP_LOCK_MS = 900;
 const PLAYER_HITBOX_SIZE = TILE * 0.8;
 const LAVA_DAMAGE = 15;
-const LAVA_COOLDOWN_MS = 400;
+const LAVA_COOLDOWN_MS = 200;
 const LAVA_KNOCKBACK = 420;
 const LAVA_CONTACT_INSET = 0;
 const LAVA_TOUCH_TOLERANCE = 1;
@@ -94,7 +94,7 @@ const LAVA_TILE = 16;
 
 const tileDefs = {
   0: { name: "Air", color: "rgba(0,0,0,0)", solid: false, hardness: 0, texture: null, rarity: 0 },
-  1: { name: "Grass", color: "#62c462", solid: true, hardness: 0.3, texture: "assets/blocks/grass.svg", rarity: 1 },
+  1: { name: "Grass", color: "#62c462", solid: true, hardness: 0.3, texture: "assets/blocks/grass-block.png", rarity: 1 },
   2: { name: "Dirt", color: "#8f5f3d", solid: true, hardness: 0.5, texture: "assets/blocks/dirt.svg", rarity: 1 },
   3: { name: "Stone", color: "#8d98a2", solid: true, hardness: 0.8, texture: "assets/blocks/stone.svg", rarity: 2 },
   4: { name: "Wood", color: "#c48a4d", solid: true, hardness: 0.4, texture: "assets/blocks/wood.svg", rarity: 1 },
