@@ -115,7 +115,7 @@ const tileDefs = {
 };
 
 const itemDefs = {
-  1: { name: "Grass Block", icon: "assets/items/grass-block.svg", color: "#62c462", rarity: 1 },
+  1: { name: "Grass Block", icon: "assets/items/grass-block.png", color: "#62c462", rarity: 1 },
   2: { name: "Dirt Block", icon: "assets/items/dirt-block.svg", color: "#8f5f3d", rarity: 1 },
   3: { name: "Stone Block", icon: "assets/items/stone-block.svg", color: "#8d98a2", rarity: 1 },
   4: { name: "Wood Block", icon: "assets/items/wood-block.svg", color: "#c48a4d", rarity: 1 },
