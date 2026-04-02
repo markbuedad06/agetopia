@@ -1267,9 +1267,11 @@ function getGeneratedDoorTile(worldName = "default") {
 
 function getDoorSpawnPosition(worldName = "default") {
   const door = getGeneratedDoorTile(worldName);
+  const spawnOffsetX = (TILE - PLAYER_HITBOX_SIZE) * 0.5;
+  const spawnOffsetY = TILE - PLAYER_HITBOX_SIZE;
   return {
-    x: door.x * TILE,
-    y: Math.max(0, (door.y - 1) * TILE),
+    x: door.x * TILE + spawnOffsetX,
+    y: Math.max(0, door.y * TILE + spawnOffsetY),
   };
 }
 
