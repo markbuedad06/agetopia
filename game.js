@@ -3252,14 +3252,19 @@ function drawDrops() {
         ctx.stroke();
       }
     } else {
-      // Draw blocks as squares
+      // Prefer item icon for block drops (e.g., grass-block.png), fallback to color square.
+      const iconImg = def.icon ? getTexture(def.icon) : null;
       const size = 20;
-      ctx.fillStyle = def.color;
-      ctx.fillRect(px - size / 2, py - size / 2 + bobOffset, size, size);
-      
-      ctx.strokeStyle = "rgba(255,255,255,0.5)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(px - size / 2, py - size / 2 + bobOffset, size, size);
+      if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) {
+        ctx.drawImage(iconImg, px - size / 2, py - size / 2 + bobOffset, size, size);
+      } else {
+        ctx.fillStyle = def.color;
+        ctx.fillRect(px - size / 2, py - size / 2 + bobOffset, size, size);
+
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px - size / 2, py - size / 2 + bobOffset, size, size);
+      }
     }
 
     const stackCount = normalizeDropCount(drop.count);
