@@ -2508,7 +2508,7 @@ function renderQuickSlots() {
     if (count > 0) {
       const icon = document.createElement("img");
       icon.className = "slot-icon";
-      icon.src = item.icon;
+      icon.src = getVersionedAssetPath(item.icon);
       icon.alt = item.name;
       icon.loading = "lazy";
 
@@ -2553,7 +2553,7 @@ function renderFullInventory() {
 
     const icon = document.createElement("img");
     icon.className = "slot-icon";
-    icon.src = item.icon;
+    icon.src = getVersionedAssetPath(item.icon);
     icon.alt = item.name;
     icon.loading = "lazy";
 
@@ -2593,7 +2593,7 @@ function renderFullInventory() {
 
     const icon = document.createElement("img");
     icon.className = "slot-icon";
-    icon.src = item.icon;
+    icon.src = getVersionedAssetPath(item.icon);
     icon.alt = item.name;
     icon.loading = "lazy";
 
