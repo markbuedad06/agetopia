@@ -463,7 +463,7 @@ const player = {
   h: PLAYER_HITBOX_SIZE,
   vx: 0,
   vy: 0,
-  speed: 290,
+  speed: 190,
   jump: JUMP_MAX_VELOCITY,
   onGround: false,
   facing: 1,
