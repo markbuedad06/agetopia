@@ -59,6 +59,7 @@ const INVENTORY_STATE_KEY = "agetopia_inventory_open";
 const INVENTORY_ITEMS_KEY = "agetopia_inventory_items";
 const LAST_USERNAME_KEY = "agetopia_last_username";
 const GROWING_PLANTS_KEY = "agetopia_growing_plants";
+const ASSET_VERSION = "20260402-grass";
 const RENDER_SCALE_LOW = 0.55;
 const RENDER_SCALE_MEDIUM = 0.7;
 const RENDER_SCALE_HIGH = 0.85;
@@ -94,7 +95,7 @@ const LAVA_TILE = 16;
 
 const tileDefs = {
   0: { name: "Air", color: "rgba(0,0,0,0)", solid: false, hardness: 0, texture: null, rarity: 0 },
-  1: { name: "Grass", color: "#62c462", solid: true, hardness: 0.3, texture: "assets/blocks/grass-block.png", rarity: 1 },
+  1: { name: "Grass", color: "#62c462", solid: true, hardness: 0.3, texture: `assets/blocks/grass-block.png?v=${ASSET_VERSION}`, rarity: 1 },
   2: { name: "Dirt", color: "#8f5f3d", solid: true, hardness: 0.5, texture: "assets/blocks/dirt.svg", rarity: 1 },
   3: { name: "Stone", color: "#8d98a2", solid: true, hardness: 0.8, texture: "assets/blocks/stone.svg", rarity: 2 },
   4: { name: "Wood", color: "#c48a4d", solid: true, hardness: 0.4, texture: "assets/blocks/wood.svg", rarity: 1 },
