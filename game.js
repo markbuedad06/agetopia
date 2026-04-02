@@ -1860,8 +1860,8 @@ function tryBreak(dt) {
   const plantKey = `${tx}:${ty}`;
   const plant = growingPlants.get(plantKey);
   
-  // Can't break empty tiles unless there's a growing plant
-  if ((tile === 0 || tile === 5 || tile === 7) && !plant) {
+  // Can't break air/door tiles unless there's a growing plant
+  if ((tile === 0 || tile === 7) && !plant) {
     breakState.progress = 0;
     return;
   }
