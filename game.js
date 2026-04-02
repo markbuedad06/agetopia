@@ -1424,11 +1424,22 @@ function getTexture(src) {
   return img;
 }
 
-function drawBlockTexture(def, drawX, drawY) {
-  const img = getTexture(def.texture);
-  if (img && img.complete && img.naturalWidth > 0) {
-    ctx.drawImage(img, drawX, drawY, TILE, TILE);
+function drawBlockTexture(tileId, def, drawX, drawY) {
+  const primaryTexture = def?.texture || itemDefs[tileId]?.icon || null;
+  const primaryImg = getTexture(primaryTexture);
+  if (primaryImg && primaryImg.complete && primaryImg.naturalWidth > 0) {
+    ctx.drawImage(primaryImg, drawX, drawY, TILE, TILE);
     return;
+  }
+
+  // Fallback: if block texture fails, try item icon for the same tile.
+  const iconTexture = itemDefs[tileId]?.icon || null;
+  if (iconTexture && iconTexture !== primaryTexture) {
+    const iconImg = getTexture(iconTexture);
+    if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) {
+      ctx.drawImage(iconImg, drawX, drawY, TILE, TILE);
+      return;
+    }
   }
 
   ctx.fillStyle = def.color;
@@ -2103,9 +2114,10 @@ function drawWorld() {
       if (tile === 0) continue;
 
       const def = tileDefs[tile];
+      if (!def) continue;
       const drawX = x * TILE - camera.x;
       const drawY = y * TILE - camera.y;
-      drawBlockTexture(def, drawX, drawY);
+      drawBlockTexture(tile, def, drawX, drawY);
     }
   }
 }
@@ -3294,8 +3306,10 @@ function drawDrops() {
     const py = drop.y - camera.y;
     const bobOffset = Math.sin(drop.floatTime * 3) * Math.max(1, Math.min(6, DROP_FLOAT_SPEED / 20));
     
-    // Use itemDefs to get color (handles both blocks and seeds)
-    const def = itemDefs[drop.tile] || tileDefs[drop.tile];
+    // Prefer item definition for icon-based drop rendering.
+    const itemDef = itemDefs[drop.tile] || null;
+    const tileDef = tileDefs[drop.tile] || null;
+    const def = itemDef || tileDef;
     
     if (!def) continue; // Skip if item/tile doesn't exist
     
@@ -3306,7 +3320,8 @@ function drawDrops() {
     
     if (isSeed) {
       // Prefer icon if present (avoids lava seed looking like a block)
-      const iconImg = def.icon ? getTexture(def.icon) : null;
+      const seedIconSrc = itemDef?.icon || def.icon || null;
+      const iconImg = seedIconSrc ? getTexture(seedIconSrc) : null;
       if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) {
         const size = 20;
         ctx.drawImage(iconImg, px - size / 2, py - size / 2 + bobOffset, size, size);
@@ -3334,8 +3349,9 @@ function drawDrops() {
         ctx.stroke();
       }
     } else {
-      // Prefer item icon for block drops (e.g., grass-block.png), fallback to color square.
-      const iconImg = def.icon ? getTexture(def.icon) : null;
+      // Prefer item icon for block drops, then block texture, then color.
+      const blockIconSrc = itemDef?.icon || tileDef?.texture || def.icon || null;
+      const iconImg = blockIconSrc ? getTexture(blockIconSrc) : null;
       const size = 20;
       if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) {
         ctx.drawImage(iconImg, px - size / 2, py - size / 2 + bobOffset, size, size);
