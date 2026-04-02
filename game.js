@@ -46,8 +46,17 @@ const toggleReachRingEl = document.getElementById("toggleReachRing");
 const toggleCloudsEl = document.getElementById("toggleClouds");
 
 const TILE = 32;
-const WORLD_WIDTH = 240;
-const WORLD_HEIGHT = 90;
+const WORLD_WIDTH = 151;
+const WORLD_HEIGHT = 151;
+const LAVA_PATCH_MIN_HEIGHT = 1;
+const LAVA_PATCH_MAX_HEIGHT = 5;
+const STONE_PATCH_MIN_HEIGHT = 6;
+const STONE_PATCH_MAX_HEIGHT = 40;
+const DIRT_UPPER_MIN_HEIGHT = 41;
+const DIRT_UPPER_MAX_HEIGHT = 45;
+const GRASS_SURFACE_HEIGHT = 46;
+const DOOR_HEIGHT = 47;
+const CLOUD_MIN_HEIGHT = 81;
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const ONLINE_MODE = URL_PARAMS.get("online") === "1";
 const WORLD_NAME = URL_PARAMS.get("world") || localStorage.getItem("agetopia_world") || "default";
@@ -68,7 +77,7 @@ const RENDER_SCALE_HIGH = 0.85;
 const RENDER_SCALE_OPTIONS = [RENDER_SCALE_LOW, RENDER_SCALE_MEDIUM, RENDER_SCALE_HIGH];
 const INVENTORY_STACK_LIMIT = 99;
 const MAX_HEALTH = 100;
-const PUNCH_RANGE_TILES = 2.25;
+const PUNCH_RANGE_TILES = 3;
 const PUNCH_COOLDOWN_MS = 320;
 const PUNCH_ANIM_MS = 180;
 const DIGIT_COMBO_TIMEOUT_MS = 1600;
@@ -382,51 +391,84 @@ function setTile(x, y, type) {
   world[indexOf(x, y)] = type;
 }
 
-function pseudoNoise(x) {
-  return Math.sin(x * 0.14) * 0.55 + Math.sin(x * 0.047 + 23) * 0.3 + Math.sin(x * 0.008 + 60) * 0.15;
+function hashSeed(value) {
+  const text = String(value || "default");
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
-function generateWorld() {
+function seededNoise2D(x, y, seed) {
+  const value = Math.sin((x + 1) * 12.9898 + (y + 1) * 78.233 + (seed + 1) * 0.00173) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+function yFromBottom(heightFromBottom) {
+  return WORLD_HEIGHT - heightFromBottom;
+}
+
+function getGeneratedDoorTile(worldName = WORLD_NAME) {
+  const seed = hashSeed(worldName);
+  const minDoorX = 2;
+  const maxDoorX = WORLD_WIDTH - 3;
+  const span = Math.max(1, maxDoorX - minDoorX + 1);
+  const roll = seededNoise2D(47, 7, seed + 401);
+  const doorX = minDoorX + Math.floor(roll * span);
+  return {
+    x: doorX,
+    y: yFromBottom(DOOR_HEIGHT),
+  };
+}
+
+function getDoorSpawnPosition(worldName = WORLD_NAME) {
+  const door = getGeneratedDoorTile(worldName);
+  return {
+    x: door.x * TILE,
+    y: Math.max(0, (door.y - 1) * TILE),
+  };
+}
+
+function generateWorld(worldName = WORLD_NAME) {
+  const seed = hashSeed(worldName);
+  world.fill(0);
+
   for (let x = 0; x < WORLD_WIDTH; x += 1) {
-    const base = 46;
-    const height = Math.floor(base + pseudoNoise(x) * 10);
-    for (let y = 0; y < WORLD_HEIGHT; y += 1) {
-      if (y < height) {
-        setTile(x, y, 0);
-      } else if (y === height) {
-        setTile(x, y, 1);
-      } else if (y < height + 4) {
-        setTile(x, y, 2);
-      } else {
-        setTile(x, y, 3);
-      }
+    // 1-5 height: dirt with random lava patches.
+    for (let h = LAVA_PATCH_MIN_HEIGHT; h <= LAVA_PATCH_MAX_HEIGHT; h += 1) {
+      const y = yFromBottom(h);
+      const lavaPatch = seededNoise2D(Math.floor(x / 3), Math.floor(h / 2), seed + 17) < 0.22;
+      setTile(x, y, lavaPatch ? LAVA_TILE : 2);
     }
 
-    if (x % 29 === 0) {
-      const cloudY = 15 + (x % 7);
-      for (let i = 0; i < 5; i += 1) {
-        if (inBounds(x + i, cloudY)) setTile(x + i, cloudY, 5);
-      }
+    // 6-40 height: dirt with random stone patches.
+    for (let h = STONE_PATCH_MIN_HEIGHT; h <= STONE_PATCH_MAX_HEIGHT; h += 1) {
+      const y = yFromBottom(h);
+      const stonePatch = seededNoise2D(Math.floor(x / 4), Math.floor(h / 3), seed + 113) < 0.3;
+      setTile(x, y, stonePatch ? 3 : 2);
     }
 
-    if (x % 37 === 0 && x > 10 && x < WORLD_WIDTH - 10) {
-      const trunkBase = height - 1;
-      for (let t = 1; t <= 4; t += 1) {
-        setTile(x, trunkBase - t, 4);
-      }
-      setTile(x - 1, trunkBase - 4, 1);
-      setTile(x + 1, trunkBase - 4, 1);
-      setTile(x, trunkBase - 5, 1);
+    // 41-45 height: dirt.
+    for (let h = DIRT_UPPER_MIN_HEIGHT; h <= DIRT_UPPER_MAX_HEIGHT; h += 1) {
+      setTile(x, yFromBottom(h), 2);
+    }
+
+    // 46 height: grass surface.
+    setTile(x, yFromBottom(GRASS_SURFACE_HEIGHT), 1);
+
+    // 81-max height: air with random cloud patches.
+    for (let h = CLOUD_MIN_HEIGHT; h <= WORLD_HEIGHT; h += 1) {
+      const y = yFromBottom(h);
+      const cloudPatch = seededNoise2D(Math.floor(x / 6), Math.floor(h / 4), seed + 271) < 0.18;
+      if (cloudPatch) setTile(x, y, 5);
     }
   }
 
-  // Fill the bottom rows with lava to mirror server generation
-  const lavaDepth = 3;
-  for (let y = WORLD_HEIGHT - lavaDepth; y < WORLD_HEIGHT; y += 1) {
-    for (let x = 0; x < WORLD_WIDTH; x += 1) {
-      setTile(x, y, LAVA_TILE);
-    }
-  }
+  // 47 height: one door at a random position.
+  const door = getGeneratedDoorTile(worldName);
+  setTile(door.x, door.y, 7);
 }
 
 generateWorld();
@@ -458,9 +500,11 @@ function getItemRarity(itemId) {
   return itemDefs[itemId]?.rarity || 1;
 }
 
+const initialSpawn = getDoorSpawnPosition();
+
 const player = {
-  x: 15 * TILE,
-  y: 30 * TILE,
+  x: initialSpawn.x,
+  y: initialSpawn.y,
   w: PLAYER_HITBOX_SIZE,
   h: PLAYER_HITBOX_SIZE,
   vx: 0,
@@ -3384,10 +3428,9 @@ function drawDrops() {
 }
 
 function respawnLocal() {
-  const doorX = Math.floor(WORLD_WIDTH / 2);
-  const doorBaseY = 46 + Math.floor(pseudoNoise(doorX) * 10);
-  player.x = doorX * TILE;
-  player.y = (doorBaseY - 2) * TILE;
+  const spawn = getDoorSpawnPosition();
+  player.x = spawn.x;
+  player.y = spawn.y;
   player.vx = 0;
   player.vy = 0;
   player.pendingNudgeX = 0;
