@@ -467,7 +467,7 @@ const player = {
   jump: JUMP_MAX_VELOCITY,
   onGround: false,
   facing: 1,
-  reach: 3,
+  reach: 3.5,
   health: MAX_HEALTH,
   maxHealth: MAX_HEALTH,
   punchUntil: 0,
