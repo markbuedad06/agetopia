@@ -1339,14 +1339,88 @@ async function apiRequest(path, method, payload, token) {
   return data;
 }
 
+function normalizeAssetPath(src) {
+  return String(src || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .split("?")[0];
+}
+
+function isManagedAssetPath(src) {
+  return MANAGED_ASSET_PREFIXES.some((prefix) => src.startsWith(prefix));
+}
+
+function getVersionedAssetPath(src) {
+  if (!src) return src;
+  const raw = String(src);
+  if (/^(data:|blob:|https?:|\/\/)/i.test(raw)) return raw;
+
+  const normalized = normalizeAssetPath(raw);
+  if (!normalized) return raw;
+  if (!isManagedAssetPath(normalized)) return normalized;
+
+  const version = assetManifestEntries.get(normalized) || assetManifestVersion;
+  if (!version) return normalized;
+  return `${normalized}?v=${encodeURIComponent(String(version))}`;
+}
+
+async function refreshAssetManifest() {
+  try {
+    const response = await fetch(`/api/assets/manifest?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json().catch(() => null);
+    if (!data || typeof data !== "object") return;
+
+    const nextVersion = String(data.version || assetManifestVersion || ASSET_VERSION);
+    const nextEntries = new Map();
+    if (data.assets && typeof data.assets === "object") {
+      for (const [assetPath, version] of Object.entries(data.assets)) {
+        const normalized = normalizeAssetPath(assetPath);
+        if (!normalized || !isManagedAssetPath(normalized)) continue;
+        nextEntries.set(normalized, String(version));
+      }
+    }
+
+    let changed = nextVersion !== assetManifestVersion || nextEntries.size !== assetManifestEntries.size;
+    if (!changed) {
+      for (const [assetPath, version] of nextEntries.entries()) {
+        if (assetManifestEntries.get(assetPath) !== version) {
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (!changed) return;
+
+    assetManifestVersion = nextVersion;
+    assetManifestEntries = nextEntries;
+    textureCache.clear();
+    updateHUD();
+  } catch (err) {
+    if (!assetManifestFetchWarned) {
+      console.warn("Asset manifest sync unavailable, using cached textures.", err);
+      assetManifestFetchWarned = true;
+    }
+  }
+}
+
+function startAssetManifestSync() {
+  if (assetManifestTimer) return;
+  assetManifestTimer = window.setInterval(() => {
+    refreshAssetManifest().catch(() => {});
+  }, ASSET_MANIFEST_REFRESH_MS);
+}
+
 function getTexture(src) {
   if (!src) return null;
-  if (textureCache.has(src)) return textureCache.get(src);
+  const resolvedSrc = getVersionedAssetPath(src);
+  if (textureCache.has(resolvedSrc)) return textureCache.get(resolvedSrc);
 
   const img = new Image();
   img.decoding = "async";
-  img.src = src;
-  textureCache.set(src, img);
+  img.src = resolvedSrc;
+  textureCache.set(resolvedSrc, img);
   return img;
 }
 
