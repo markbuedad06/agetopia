@@ -498,6 +498,28 @@ function getSeedSourceBlock(itemId) {
   return null;
 }
 
+function getSeedItemForSourceBlock(sourceBlock) {
+  if (sourceBlock >= 1 && sourceBlock <= 6) return sourceBlock + 8;
+  if (sourceBlock === 16) return 17;
+  return null;
+}
+
+function getGrowingTileForSourceBlock(sourceBlock) {
+  const seedItem = getSeedItemForSourceBlock(sourceBlock);
+  if (seedItem === null) return null;
+  return getSeedGrowingTile(seedItem);
+}
+
+const seedCombinationRecipes = new Map([
+  ["1:2", 4], // Grass + Dirt -> Wood
+]);
+
+function getSeedCombinationResult(existingSourceBlock, newSeedSourceBlock) {
+  const low = Math.min(existingSourceBlock, newSeedSourceBlock);
+  const high = Math.max(existingSourceBlock, newSeedSourceBlock);
+  return seedCombinationRecipes.get(`${low}:${high}`) ?? null;
+}
+
 function getItemRarity(itemId) {
   return itemDefs[itemId]?.rarity || 1;
 }
@@ -1982,12 +2004,56 @@ function tryPlace() {
   if (!inBounds(tx, ty) || !canReach(tx, ty)) return;
   if (getTile(tx, ty) !== 0) return;
 
-  // Check if there's already a growing plant at this location
   const plantKey = `${tx}:${ty}`;
-  if (growingPlants.has(plantKey)) return;
+  const existingPlant = growingPlants.get(plantKey);
 
   const selectedItem = hotbarOrder[selectedSlot];
   if (!inventory[selectedItem] || inventory[selectedItem] < 1) return;
+
+  const placingSeed = isSeedItem(selectedItem);
+  let seedPlacement = null;
+  if (placingSeed) {
+    const seedSourceBlock = getSeedSourceBlock(selectedItem);
+    if (!seedSourceBlock) return;
+
+    let finalSourceBlock = seedSourceBlock;
+    let isComboPlant = false;
+    if (existingPlant) {
+      const comboResult = getSeedCombinationResult(existingPlant.sourceBlock, seedSourceBlock);
+      if (!comboResult) {
+        setAuthMessage("These seeds cannot combine in the same block!");
+        return;
+      }
+      finalSourceBlock = comboResult;
+      isComboPlant = true;
+    }
+
+    const finalSeedItem = getSeedItemForSourceBlock(finalSourceBlock);
+    const growingTile = getGrowingTileForSourceBlock(finalSourceBlock);
+    if (finalSeedItem === null || growingTile === null) return;
+
+    const rarity = getItemRarity(finalSeedItem);
+    const growthTime = getGrowthTimeSeconds(rarity);
+    const baseDrops = 2 + rarity;
+    const dropCount = baseDrops + (Math.random() < 0.5 ? 1 : 0);
+    const plantedAt = Date.now();
+    seedPlacement = {
+      growthTime,
+      dropCount,
+      plantedAt,
+      sourceBlock: finalSourceBlock,
+      isComboPlant,
+    };
+
+    const supportY = ty + 1;
+    if (!inBounds(tx, supportY) || !isSolid(getTile(tx, supportY))) {
+      setAuthMessage("Seeds must be planted above a solid block!");
+      return;
+    }
+  } else if (existingPlant) {
+    setAuthMessage("A seed is already growing in this block!");
+    return;
+  }
 
   const tileX = tx * TILE;
   const tileY = ty * TILE;
@@ -2048,24 +2114,16 @@ function tryPlace() {
   }
   
   // Handle seed planting vs block placement
-  if (isSeedItem(selectedItem)) {
+  if (placingSeed) {
     // Plant seed - keep tile empty (0) and track in growingPlants map
-    const rarity = getItemRarity(selectedItem);
-    const growthTime = getGrowthTimeSeconds(rarity);
-    // Calculate random drop count based on rarity (higher rarity = more drops)
-    const baseDrops = 2 + rarity;
-    const dropCount = baseDrops + (Math.random() < 0.5 ? 1 : 0);
-    const plantedAt = Date.now();
-    const seedSourceBlock = getSeedSourceBlock(selectedItem);
-    const growingTile = getSeedGrowingTile(selectedItem);
-    if (!seedSourceBlock || growingTile === null) return;
+    if (!seedPlacement) return;
     growingPlants.set(plantKey, { 
       progress: 0, 
-      totalTime: growthTime, 
-      dropCount: dropCount,
-      sourceBlock: seedSourceBlock,
+      totalTime: seedPlacement.growthTime,
+      dropCount: seedPlacement.dropCount,
+      sourceBlock: seedPlacement.sourceBlock,
       fullGrown: false,
-      plantedAt: plantedAt
+      plantedAt: seedPlacement.plantedAt
     });
     setTile(tx, ty, 0);
     // Suppress breaking for 500ms after planting to prevent instant destruction
@@ -2075,11 +2133,15 @@ function tryPlace() {
       type: "plant_seed", 
       x: tx, 
       y: ty, 
-      sourceBlock: seedSourceBlock,
-      dropCount: dropCount,
-      totalTime: growthTime,
-      plantedAt: plantedAt
+      sourceBlock: seedPlacement.sourceBlock,
+      dropCount: seedPlacement.dropCount,
+      totalTime: seedPlacement.growthTime,
+      plantedAt: seedPlacement.plantedAt
     });
+    if (seedPlacement.isComboPlant) {
+      const comboName = tileDefs[seedPlacement.sourceBlock]?.name || "new";
+      setAuthMessage(`Seed combo successful! ${comboName} tree is now growing.`);
+    }
     // Save to localStorage for offline mode
     saveGrowingPlants();
   } else {
