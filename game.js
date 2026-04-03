@@ -2494,6 +2494,11 @@ function drawGrowingPlants() {
       ctx.arc(centerX - 2, centerY - 4, crownRadius / 3, 0, Math.PI * 2);
       ctx.fill();
       
+      const sourceName = sourceTileDef?.name || "Tree";
+      const treeName = sourceName.endsWith(" Block")
+        ? `${sourceName.slice(0, -6)} Tree`
+        : `${sourceName} Tree`;
+
       // Draw timer above the tree
       const timerY = drawY - 8;
       let timerText = "";
@@ -2508,6 +2513,15 @@ function drawGrowingPlants() {
         ctx.fillStyle = "#60a5fa";
       }
       
+      // Show tree name while still growing.
+      if (!plant.fullGrown) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 9px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(treeName, centerX, timerY - 11);
+      }
+
       // Draw timer text (no background)
       ctx.font = "bold 10px Arial";
       ctx.textAlign = "center";
