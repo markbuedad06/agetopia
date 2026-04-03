@@ -77,6 +77,7 @@ const RENDER_SCALE_HIGH = 0.85;
 const RENDER_SCALE_OPTIONS = [RENDER_SCALE_LOW, RENDER_SCALE_MEDIUM, RENDER_SCALE_HIGH];
 const INVENTORY_STACK_LIMIT = 99;
 const MAX_HEALTH = 100;
+const TREE_BREAK_SECONDS = 4;
 const PUNCH_RANGE_TILES = 3;
 const PUNCH_COOLDOWN_MS = 320;
 const PUNCH_ANIM_MS = 180;
@@ -1899,8 +1900,8 @@ function tryBreak(dt) {
   // Determine hardness - use plant hardness if it exists, otherwise use tile hardness
   let hardness;
   if (plant) {
-    // Trees break instantly
-    hardness = 0;
+    // Trees take a fixed 4s to break.
+    hardness = TREE_BREAK_SECONDS;
   } else {
     hardness = tileDefs[tile].hardness;
   }
@@ -2458,10 +2459,14 @@ function drawRemotePlayers() {
 }
 
 function drawGrowingPlants() {
+  const playerTx = Math.floor((player.x + player.w * 0.5) / TILE);
+  const playerTy = Math.floor((player.y + player.h * 0.5) / TILE);
+
   for (const [plantKey, plant] of growingPlants.entries()) {
     const [x, y] = plantKey.split(":").map(Number);
     const drawX = x * TILE - camera.x;
     const drawY = y * TILE - camera.y;
+    const showPlantText = playerTx === x && playerTy === y;
     
     const progress = Math.max(0, Math.min(1, plant.progress / plant.totalTime));
     const remainingTime = Math.max(0, plant.totalTime - plant.progress);
@@ -2494,39 +2499,41 @@ function drawGrowingPlants() {
       ctx.arc(centerX - 2, centerY - 4, crownRadius / 3, 0, Math.PI * 2);
       ctx.fill();
       
-      const sourceName = sourceTileDef?.name || "Tree";
-      const treeName = sourceName.endsWith(" Block")
-        ? `${sourceName.slice(0, -6)} Tree`
-        : `${sourceName} Tree`;
+      if (showPlantText) {
+        const sourceName = sourceTileDef?.name || "Tree";
+        const treeName = sourceName.endsWith(" Block")
+          ? `${sourceName.slice(0, -6)} Tree`
+          : `${sourceName} Tree`;
 
-      // Draw timer above the tree
-      const timerY = drawY - 8;
-      let timerText = "";
-      if (plant.fullGrown) {
-        timerText = "✓";
-        ctx.fillStyle = "#fbbf24";
-      } else {
-        const seconds = Math.ceil(remainingTime);
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        timerText = mins > 0 ? `${mins}:${secs.toString().padStart(2, "0")}` : `${secs}s`;
-        ctx.fillStyle = "#60a5fa";
-      }
-      
-      // Show tree name while still growing.
-      if (!plant.fullGrown) {
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 9px Arial";
+        // Draw timer above the tree
+        const timerY = drawY - 8;
+        let timerText = "";
+        if (plant.fullGrown) {
+          timerText = "✓";
+          ctx.fillStyle = "#fbbf24";
+        } else {
+          const seconds = Math.ceil(remainingTime);
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          timerText = mins > 0 ? `${mins}:${secs.toString().padStart(2, "0")}` : `${secs}s`;
+          ctx.fillStyle = "#60a5fa";
+        }
+
+        // Show tree name while still growing.
+        if (!plant.fullGrown) {
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 9px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "bottom";
+          ctx.fillText(treeName, centerX, timerY - 11);
+        }
+
+        // Draw timer text (no background)
+        ctx.font = "bold 10px Arial";
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
-        ctx.fillText(treeName, centerX, timerY - 11);
+        ctx.fillText(timerText, centerX, timerY);
       }
-
-      // Draw timer text (no background)
-      ctx.font = "bold 10px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(timerText, centerX, timerY);
       
       // Draw drop count indicator when fully grown
       if (plant.fullGrown) {
@@ -2558,13 +2565,12 @@ function drawSelection() {
     
     let hardness = 1;
     if (plant) {
-      // Trees break instantly, show full bar
-      hardness = 0.001;
+      hardness = TREE_BREAK_SECONDS;
     } else {
       hardness = tileDefs[tile]?.hardness ?? 1;
     }
     
-    const ratio = hardness === 0.001 ? 1 : Math.min(1, breakState.progress / hardness);
+    const ratio = Math.min(1, breakState.progress / hardness);
     ctx.fillStyle = "rgba(239, 68, 68, 0.65)";
     ctx.fillRect(drawX, drawY + TILE - 4, TILE * ratio, 4);
   }
