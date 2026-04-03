@@ -1900,8 +1900,8 @@ function tryBreak(dt) {
   // Determine hardness - use plant hardness if it exists, otherwise use tile hardness
   let hardness;
   if (plant) {
-    // Trees take a fixed 4s to break.
-    hardness = TREE_BREAK_SECONDS;
+    // Growing trees take 4s; fully grown trees break instantly.
+    hardness = plant.fullGrown ? 0 : TREE_BREAK_SECONDS;
   } else {
     hardness = tileDefs[tile].hardness;
   }
@@ -2565,12 +2565,12 @@ function drawSelection() {
     
     let hardness = 1;
     if (plant) {
-      hardness = TREE_BREAK_SECONDS;
+      hardness = plant.fullGrown ? 0 : TREE_BREAK_SECONDS;
     } else {
       hardness = tileDefs[tile]?.hardness ?? 1;
     }
     
-    const ratio = Math.min(1, breakState.progress / hardness);
+    const ratio = hardness === 0 ? 1 : Math.min(1, breakState.progress / hardness);
     ctx.fillStyle = "rgba(239, 68, 68, 0.65)";
     ctx.fillRect(drawX, drawY + TILE - 4, TILE * ratio, 4);
   }
