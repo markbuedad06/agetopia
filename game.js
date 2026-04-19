@@ -604,12 +604,83 @@ let assetManifestFetchWarned = false;
 const PLAYER_SPRITE_FRAME_SIZE = 32;
 const PLAYER_SPRITE_FRAMES = 8;
 const PLAYER_SPRITE_FPS = 12;
+const PLAYER_SPRITE_PRELOAD_TIMEOUT_MS = 2200;
 const PLAYER_SPRITES = {
   right: "Journals/walking right.png",
   left: "Journals/walking left.png",
   down: "Journals/walking down.png",
   up: "Journals/walikng up.png",
 };
+let playerSpritePreloadPromise = null;
+let playerSpritePreloadFinished = false;
+
+function waitForTextureReady(image, timeoutMs = PLAYER_SPRITE_PRELOAD_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    if (!image) {
+      resolve(false);
+      return;
+    }
+
+    if (image.complete) {
+      resolve(image.naturalWidth > 0 && image.naturalHeight > 0);
+      return;
+    }
+
+    let settled = false;
+    let timeoutId = 0;
+
+    function cleanup() {
+      image.removeEventListener("load", handleLoad);
+      image.removeEventListener("error", handleError);
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+
+    function finish(ok) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(ok);
+    }
+
+    function handleLoad() {
+      finish(image.naturalWidth > 0 && image.naturalHeight > 0);
+    }
+
+    function handleError() {
+      finish(false);
+    }
+
+    image.addEventListener("load", handleLoad);
+    image.addEventListener("error", handleError);
+    timeoutId = window.setTimeout(() => {
+      finish(image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
+    }, timeoutMs);
+  });
+}
+
+function preloadPlayerSprites() {
+  if (playerSpritePreloadPromise) return playerSpritePreloadPromise;
+
+  const spriteSources = Object.values(PLAYER_SPRITES);
+  playerSpritePreloadPromise = Promise.all(
+    spriteSources.map((source) => waitForTextureReady(getTexture(source)))
+  )
+    .then((results) => {
+      if (results.some((loaded) => !loaded)) {
+        console.warn("Some player sprite frames failed to preload.");
+      }
+      return results.every(Boolean);
+    })
+    .catch((err) => {
+      console.warn("Player sprite preload failed.", err);
+      return false;
+    })
+    .finally(() => {
+      playerSpritePreloadFinished = true;
+    });
+
+  return playerSpritePreloadPromise;
+}
 
 function setAuthMessage(message) {
   if (authMessageEl) {
@@ -2311,6 +2382,11 @@ function drawPlayerBody(worldX, worldY, facing, bodyColor, attackStrength = 0, d
     return;
   }
 
+  // Avoid flashing the legacy body while sprite sheets are still loading.
+  if (!playerSpritePreloadFinished) {
+    return;
+  }
+
   const px = worldX - camera.x;
   const py = worldY - camera.y;
   const shoulderX = px + (facing > 0 ? player.w - 6 : 6);
@@ -2774,7 +2850,7 @@ function connectSocket(token) {
     reconnectTimer = null;
   });
 
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", async (event) => {
     let msg;
     try {
       msg = JSON.parse(event.data);
@@ -2809,6 +2885,7 @@ function connectSocket(token) {
         updateWorldOwnerDisplay();
       }
       
+      await preloadPlayerSprites();
       unlockGameplay();
       if (msg.inventory) {
         applyInventoryFromServer(msg.inventory);
@@ -3293,6 +3370,7 @@ async function setupAuthPanel() {
   loadSettings();
   await refreshAssetManifest();
   startAssetManifestSync();
+  preloadPlayerSprites();
   setupMenuInteractions();
   setupChatUI();
   setupFriendsChatUI();
